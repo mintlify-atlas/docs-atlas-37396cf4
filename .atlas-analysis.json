@@ -1,0 +1,196 @@
+{
+  "projectType": "framework",
+  "projectName": "Dioxus",
+  "projectDescription": "Fullstack app framework for web, desktop, and mobile built with Rust",
+  "theme": "palm",
+  "primaryColor": "#FF6B35",
+  "lightColor": "#FFB347",
+  "darkColor": "#E85A2F",
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "Documentation",
+        "groups": [
+          {
+            "group": "Get Started",
+            "pages": [
+              "introduction",
+              "installation",
+              "quickstart"
+            ]
+          },
+          {
+            "group": "Core Concepts",
+            "pages": [
+              "concepts/components",
+              "concepts/rsx",
+              "concepts/props",
+              "concepts/state",
+              "concepts/hooks",
+              "concepts/signals"
+            ]
+          },
+          {
+            "group": "Building UI",
+            "pages": [
+              "ui/elements",
+              "ui/styling",
+              "ui/events",
+              "ui/conditional-rendering",
+              "ui/lists"
+            ]
+          },
+          {
+            "group": "State Management",
+            "pages": [
+              "state/use-signal",
+              "state/use-effect",
+              "state/context",
+              "state/global-state",
+              "state/stores"
+            ]
+          },
+          {
+            "group": "Routing",
+            "pages": [
+              "routing/overview",
+              "routing/defining-routes",
+              "routing/navigation",
+              "routing/nested-routes",
+              "routing/route-parameters"
+            ]
+          },
+          {
+            "group": "Async & Data",
+            "pages": [
+              "async/futures",
+              "async/use-resource",
+              "async/suspense",
+              "async/error-handling"
+            ]
+          },
+          {
+            "group": "Fullstack",
+            "pages": [
+              "fullstack/overview",
+              "fullstack/server-functions",
+              "fullstack/ssr",
+              "fullstack/hydration",
+              "fullstack/middleware"
+            ]
+          },
+          {
+            "group": "Platforms",
+            "pages": [
+              "platforms/web",
+              "platforms/desktop",
+              "platforms/mobile",
+              "platforms/native",
+              "platforms/liveview"
+            ]
+          },
+          {
+            "group": "CLI",
+            "pages": [
+              "cli/overview",
+              "cli/commands",
+              "cli/configuration",
+              "cli/hot-reload",
+              "cli/bundling"
+            ]
+          },
+          {
+            "group": "Advanced",
+            "pages": [
+              "advanced/custom-renderers",
+              "advanced/devtools",
+              "advanced/assets",
+              "advanced/performance",
+              "advanced/testing"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "API Reference",
+        "groups": [
+          {
+            "group": "Core",
+            "pages": [
+              "api/core/element",
+              "api/core/component",
+              "api/core/scope",
+              "api/core/virtual-dom"
+            ]
+          },
+          {
+            "group": "Hooks",
+            "pages": [
+              "api/hooks/use-signal",
+              "api/hooks/use-effect",
+              "api/hooks/use-memo",
+              "api/hooks/use-resource",
+              "api/hooks/use-context",
+              "api/hooks/use-coroutine"
+            ]
+          },
+          {
+            "group": "Router",
+            "pages": [
+              "api/router/router",
+              "api/router/route",
+              "api/router/link",
+              "api/router/navigator"
+            ]
+          },
+          {
+            "group": "HTML Elements",
+            "pages": [
+              "api/html/elements",
+              "api/html/attributes",
+              "api/html/events"
+            ]
+          },
+          {
+            "group": "Fullstack",
+            "pages": [
+              "api/fullstack/server-fn",
+              "api/fullstack/launch",
+              "api/fullstack/extractors"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "keyFeatures": [
+    "Cross-platform development for web, desktop, and mobile",
+    "React-like component model with RSX syntax",
+    "Signals-based reactive state management",
+    "Built-in fullstack capabilities with server functions",
+    "Hot-reload and subsecond Rust hot-patching",
+    "Type-safe routing system",
+    "Multiple renderer backends (WASM, webview, native GPU)",
+    "Integrated CLI for building and bundling"
+  ],
+  "publicApiSurface": [
+    "rsx! - Macro for declaring UI components",
+    "Element - Core component return type",
+    "#[component] - Component attribute macro",
+    "use_signal() - Reactive state hook",
+    "use_effect() - Side effect hook",
+    "use_memo() - Computed value hook",
+    "use_resource() - Async data fetching hook",
+    "use_context() - Context API hook",
+    "#[server] - Server function macro",
+    "Router - Routing component",
+    "Link - Navigation component",
+    "launch() - Application entry point",
+    "VirtualDom - Core rendering engine",
+    "Scope - Component scope type",
+    "Props - Component properties trait",
+    "Signal<T> - Reactive signal type",
+    "Memo<T> - Computed signal type",
+    "Resource<T> - Async resource type"
+  ]
+}
