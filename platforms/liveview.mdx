@@ -1,0 +1,548 @@
+---
+title: LiveView Platform
+description: Build server-rendered applications with WebSocket streaming
+---
+
+Dioxus LiveView enables you to run your application entirely on the server while streaming UI updates to the client over WebSockets. This architecture provides the benefits of server-side rendering with the interactivity of a single-page application.
+
+## Overview
+
+### Architecture
+
+```
+Client (Browser)
+    ↕ WebSocket
+Server (VirtualDOM + State)
+    ↓ Binary Mutations
+Client (Sledgehammer applies changes)
+```
+
+Key characteristics:
+- **Server-side state**: All application state lives on the server
+- **Binary protocol**: Efficient mutation streaming via WebSocket
+- **Low client overhead**: Minimal JavaScript required
+- **Secure by default**: No client-side logic to expose
+
+## Quick Start
+
+### Dependencies
+
+Add LiveView with Axum support:
+
+```toml
+[dependencies]
+dioxus = "0.6"
+dioxus-liveview = { version = "0.6", features = ["axum"] }
+axum = "0.7"
+tokio = { version = "1", features = ["full"] }
+```
+
+### Basic Server
+
+Create a LiveView server:
+
+```rust
+use axum::{Router, routing::get};
+use dioxus::prelude::*;
+use dioxus_liveview::{LiveViewPool, axum_socket};
+
+#[tokio::main]
+async fn main() {
+    let addr = "127.0.0.1:3000";
+    
+    let app = Router::new()
+        .route("/", get(index))
+        .route("/ws", get(ws_handler));
+    
+    println!("Listening on http://{}", addr);
+    axum::Server::bind(&addr.parse().unwrap())
+        .serve(app.into_make_service())
+        .await
+        .unwrap();
+}
+
+async fn index() -> axum::response::Html<String> {
+    axum::response::Html(format!(
+        r#"
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <title>LiveView App</title>
+        </head>
+        <body>
+            <div id="main"></div>
+            {}
+        </body>
+        </html>
+        "#,
+        dioxus_liveview::interpreter_glue("/ws")
+    ))
+}
+
+async fn ws_handler(
+    ws: axum::extract::WebSocketUpgrade,
+) -> impl axum::response::IntoResponse {
+    ws.on_upgrade(|socket| async move {
+        let _ = axum_socket(socket, App).await;
+    })
+}
+
+#[component]
+fn App() -> Element {
+    let mut count = use_signal(|| 0);
+    
+    rsx! {
+        h1 { "LiveView Counter" }
+        button { onclick: move |_| count += 1, "Count: {count}" }
+    }
+}
+```
+
+Run the server:
+
+```bash
+cargo run
+```
+
+Visit `http://localhost:3000`
+
+## LiveView Pool
+
+The LiveView pool manages concurrent client connections:
+
+```rust
+use dioxus_liveview::LiveViewPool;
+use std::sync::Arc;
+
+#[derive(Clone)]
+struct AppState {
+    pool: Arc<LiveViewPool>,
+}
+
+impl AppState {
+    fn new() -> Self {
+        Self {
+            pool: Arc::new(LiveViewPool::new()),
+        }
+    }
+}
+
+#[tokio::main]
+async fn main() {
+    let state = AppState::new();
+    
+    let app = Router::new()
+        .route("/ws", get(ws_handler))
+        .with_state(state);
+    
+    // ... serve app
+}
+
+async fn ws_handler(
+    ws: axum::extract::WebSocketUpgrade,
+    axum::extract::State(state): axum::extract::State<AppState>,
+) -> impl axum::response::IntoResponse {
+    ws.on_upgrade(move |socket| async move {
+        state.pool.launch_virtualdom(socket, || VirtualDom::new(App)).await;
+    })
+}
+```
+
+## Server State
+
+### Per-Connection State
+
+Each WebSocket connection gets its own VirtualDOM:
+
+```rust
+#[component]
+fn App() -> Element {
+    // This state is per-connection
+    let mut local_count = use_signal(|| 0);
+    
+    rsx! {
+        h1 { "Your count: {local_count}" }
+        button { onclick: move |_| local_count += 1, "Increment" }
+    }
+}
+```
+
+### Shared State
+
+Share state across connections:
+
+```rust
+use std::sync::Arc;
+use tokio::sync::RwLock;
+
+#[derive(Clone)]
+struct GlobalState {
+    counter: Arc<RwLock<i32>>,
+}
+
+#[component]
+fn App() -> Element {
+    let state = use_context::<GlobalState>();
+    let mut count = use_signal(|| 0);
+    
+    use_effect(move || {
+        spawn(async move {
+            let value = *state.counter.read().await;
+            count.set(value);
+        });
+    });
+    
+    let increment = move |_| {
+        spawn(async move {
+            let mut counter = state.counter.write().await;
+            *counter += 1;
+            count.set(*counter);
+        });
+    };
+    
+    rsx! {
+        h1 { "Global count: {count}" }
+        button { onclick: increment, "Increment" }
+    }
+}
+```
+
+## Database Integration
+
+Integrate with databases seamlessly:
+
+```rust
+use sqlx::{PgPool, FromRow};
+
+#[derive(FromRow, Clone)]
+struct Todo {
+    id: i32,
+    title: String,
+    completed: bool,
+}
+
+#[component]
+fn TodoList() -> Element {
+    let pool = use_context::<PgPool>();
+    let mut todos = use_signal(Vec::new);
+    
+    use_effect(move || {
+        spawn(async move {
+            let items = sqlx::query_as::<_, Todo>("SELECT * FROM todos")
+                .fetch_all(&pool)
+                .await
+                .unwrap();
+            todos.set(items);
+        });
+    });
+    
+    rsx! {
+        h1 { "Todos" }
+        ul {
+            for todo in todos() {
+                li { 
+                    key: "{todo.id}",
+                    "{todo.title}"
+                }
+            }
+        }
+    }
+}
+```
+
+## Real-time Updates
+
+Push updates to connected clients:
+
+```rust
+use tokio::sync::broadcast;
+
+#[derive(Clone)]
+struct Message {
+    user: String,
+    text: String,
+}
+
+#[component]
+fn Chat() -> Element {
+    let mut messages = use_signal(Vec::new);
+    let mut input = use_signal(String::new);
+    let tx = use_context::<broadcast::Sender<Message>>();
+    
+    // Subscribe to broadcast channel
+    use_effect(move || {
+        let mut rx = tx.subscribe();
+        spawn(async move {
+            while let Ok(msg) = rx.recv().await {
+                messages.write().push(msg);
+            }
+        });
+    });
+    
+    let send = move |_| {
+        let msg = Message {
+            user: "User".to_string(),
+            text: input().clone(),
+        };
+        tx.send(msg).ok();
+        input.set(String::new());
+    };
+    
+    rsx! {
+        div {
+            for msg in messages() {
+                p { "{msg.user}: {msg.text}" }
+            }
+        }
+        input { 
+            value: "{input}",
+            oninput: move |evt| input.set(evt.value())
+        }
+        button { onclick: send, "Send" }
+    }
+}
+```
+
+## Authentication
+
+Implement authentication:
+
+```rust
+use axum::extract::Query;
+use serde::Deserialize;
+
+#[derive(Deserialize)]
+struct AuthQuery {
+    token: String,
+}
+
+async fn ws_handler(
+    ws: axum::extract::WebSocketUpgrade,
+    Query(auth): Query<AuthQuery>,
+) -> impl axum::response::IntoResponse {
+    // Verify token
+    if !verify_token(&auth.token).await {
+        return axum::http::StatusCode::UNAUTHORIZED.into_response();
+    }
+    
+    ws.on_upgrade(|socket| async move {
+        let _ = axum_socket(socket, App).await;
+    })
+}
+
+async fn verify_token(token: &str) -> bool {
+    // Verify JWT or session token
+    true
+}
+```
+
+## Performance
+
+### Connection Pooling
+
+The LiveViewPool uses a thread pool:
+- Each client gets a pinned task
+- VirtualDOM runs on task's executor
+- Efficient handling of concurrent clients
+
+### Binary Protocol
+
+Mutations are sent as binary data:
+- Sledgehammer binary encoding
+- Minimal overhead
+- Efficient WebSocket usage
+
+### Backpressure
+
+Handle slow clients:
+
+```rust
+use futures_util::SinkExt;
+
+// WebSocket will buffer and apply backpressure automatically
+```
+
+## Scaling
+
+### Horizontal Scaling
+
+Scale across multiple servers:
+
+```rust
+use redis::aio::ConnectionManager;
+
+// Use Redis pub/sub for cross-server communication
+let redis = ConnectionManager::new(redis::Client::open("redis://localhost").unwrap())
+    .await
+    .unwrap();
+```
+
+### Load Balancing
+
+Use sticky sessions:
+
+```nginx
+upstream liveview {
+    ip_hash;  # Sticky sessions
+    server localhost:3000;
+    server localhost:3001;
+    server localhost:3002;
+}
+
+server {
+    location /ws {
+        proxy_pass http://liveview;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+    }
+}
+```
+
+## Error Handling
+
+Handle disconnections gracefully:
+
+```rust
+async fn ws_handler(
+    ws: axum::extract::WebSocketUpgrade,
+) -> impl axum::response::IntoResponse {
+    ws.on_upgrade(|socket| async move {
+        match axum_socket(socket, App).await {
+            Ok(_) => println!("Client disconnected normally"),
+            Err(e) => eprintln!("WebSocket error: {}", e),
+        }
+    })
+}
+```
+
+## Configuration
+
+Customize LiveView behavior:
+
+```rust
+use dioxus_liveview::Config;
+
+let config = Config::new()
+    .with_reconnect_attempts(5)
+    .with_reconnect_delay(Duration::from_secs(2));
+```
+
+## Security
+
+### CSRF Protection
+
+```rust
+use axum::extract::State;
+use tower_sessions::Session;
+
+async fn ws_handler(
+    ws: axum::extract::WebSocketUpgrade,
+    session: Session,
+) -> impl axum::response::IntoResponse {
+    // Verify CSRF token
+    let csrf_token: String = session.get("csrf_token").unwrap().unwrap();
+    
+    ws.on_upgrade(|socket| async move {
+        let _ = axum_socket(socket, App).await;
+    })
+}
+```
+
+### Rate Limiting
+
+```rust
+use tower::ServiceBuilder;
+use tower_governor::{GovernorLayer, GovernorConfigBuilder};
+
+let governor = GovernorConfigBuilder::default()
+    .per_second(10)
+    .burst_size(20)
+    .finish()
+    .unwrap();
+
+let app = Router::new()
+    .route("/ws", get(ws_handler))
+    .layer(ServiceBuilder::new().layer(GovernorLayer { config: Arc::new(governor) }));
+```
+
+## Debugging
+
+Enable logging:
+
+```rust
+use tracing_subscriber;
+
+#[tokio::main]
+async fn main() {
+    tracing_subscriber::fmt::init();
+    
+    // ... rest of main
+}
+```
+
+## Deployment
+
+### Docker
+
+```dockerfile
+FROM rust:1.75 as builder
+WORKDIR /app
+COPY . .
+RUN cargo build --release
+
+FROM debian:bookworm-slim
+COPY --from=builder /app/target/release/myapp /usr/local/bin/
+EXPOSE 3000
+CMD ["myapp"]
+```
+
+### Systemd Service
+
+```ini
+[Unit]
+Description=LiveView App
+After=network.target
+
+[Service]
+Type=simple
+User=www-data
+WorkingDirectory=/var/www/app
+ExecStart=/var/www/app/myapp
+Restart=always
+
+[Install]
+WantedBy=multi-user.target
+```
+
+## Comparison with Other Platforms
+
+| Feature | LiveView | Web | Desktop |
+|---------|----------|-----|--------|
+| State Location | Server | Client | Client |
+| Network Required | Yes | Initial | No |
+| Security | High | Medium | High |
+| Scalability | Moderate | High | N/A |
+| Latency | Network | None | None |
+| Server Cost | Higher | Lower | None |
+
+## When to Use LiveView
+
+LiveView is ideal for:
+- Internal admin dashboards
+- Real-time collaborative tools
+- Data-heavy applications
+- Apps requiring server-side security
+- Rapid prototyping
+
+Avoid LiveView when:
+- Offline functionality is required
+- Latency is critical
+- Client-side resources are preferred
+- Scaling to millions of users
+
+## Next Steps
+
+- [Fullstack](/fullstack) - Combine client and server rendering
+- [Web Platform](/platforms/web) - Client-side WASM apps
+- [Authentication](/auth) - Secure your application

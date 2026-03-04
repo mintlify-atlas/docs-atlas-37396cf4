@@ -1,0 +1,387 @@
+---
+title: use_resource Hook
+description: Fetch and manage async data with the use_resource hook
+---
+
+# The `use_resource` Hook
+
+The `use_resource` hook is designed for fetching and managing asynchronous data. Unlike `use_future`, it **returns a value** that you can render in your UI.
+
+## Basic Usage
+
+```rust
+use dioxus::prelude::*;
+
+fn app() -> Element {
+    let resource = use_resource(|| async move {
+        // Fetch data from an API
+        reqwest::get("https://api.example.com/data")
+            .await?
+            .json::<MyData>()
+            .await
+    });
+
+    match &*resource.read_unchecked() {
+        Some(Ok(data)) => rsx! { "Data: {data}" },
+        Some(Err(err)) => rsx! { "Error: {err}" },
+        None => rsx! { "Loading..." },
+    }
+}
+```
+
+## Resource States
+
+A resource can be in one of four states:
+
+- **Pending** - The future is currently running
+- **Ready** - The future completed successfully
+- **Paused** - The future has been paused
+- **Stopped** - The future was cancelled
+
+The resource's value is `Option<T>` where:
+- `None` - The resource is still loading
+- `Some(value)` - The resource has completed and returned a value
+
+## Reactive Dependencies
+
+One of the most powerful features of `use_resource` is automatic reactivity. The resource will automatically re-run when any signals read inside the future change:
+
+```rust
+fn app() -> Element {
+    let mut user_id = use_signal(|| 1);
+    
+    // This resource automatically refetches when user_id changes
+    let user_data = use_resource(move || async move {
+        let id = user_id(); // Read the signal
+        reqwest::get(format!("https://api.example.com/users/{id}"))
+            .await?
+            .json::<User>()
+            .await
+    });
+
+    rsx! {
+        button { 
+            onclick: move |_| user_id += 1, 
+            "Next User" 
+        }
+        
+        match &*user_data.read_unchecked() {
+            Some(Ok(user)) => rsx! { "User: {user.name}" },
+            Some(Err(e)) => rsx! { "Error: {e}" },
+            None => rsx! { "Loading..." },
+        }
+    }
+}
+```
+
+## Controlling the Resource
+
+The `Resource<T>` handle provides several methods to control execution:
+
+### Methods
+
+- **`restart()`** - Cancel and restart the resource fetch
+- **`cancel()`** - Stop the resource fetch
+- **`pause()`** - Pause execution
+- **`resume()`** - Resume a paused resource
+- **`clear()`** - Clear the value without stopping the task
+- **`state()`** - Get the current state
+- **`value()`** - Get a signal to the value
+- **`finished()`** - Check if the resource is done loading
+
+```rust
+fn app() -> Element {
+    let mut resource = use_resource(|| async move {
+        fetch_data().await
+    });
+
+    rsx! {
+        div {
+            button { 
+                onclick: move |_| resource.restart(), 
+                "Refresh" 
+            }
+            button { 
+                onclick: move |_| resource.cancel(), 
+                "Cancel" 
+            }
+            button { 
+                onclick: move |_| resource.clear(), 
+                "Clear" 
+            }
+            
+            // Display the data
+            match &*resource.read() {
+                Some(data) => rsx! { "{data}" },
+                None => rsx! { "No data" },
+            }
+        }
+    }
+}
+```
+
+## Reading Resource Values
+
+There are several ways to read resource values:
+
+### Direct Reading
+
+```rust
+// read() - Subscribes to changes and returns a guard
+let guard = resource.read();
+
+// read_unchecked() - Read without temporary value restrictions
+match &*resource.read_unchecked() {
+    Some(value) => { /* use value */ },
+    None => { /* loading */ },
+}
+
+// Call syntax - Clone the value out
+if let Some(value) = resource() {
+    // use value
+}
+```
+
+### Getting a Signal
+
+```rust
+// Get a ReadSignal to pass around
+let value_signal = resource.value();
+
+rsx! {
+    ChildComponent { data: value_signal }
+}
+```
+
+### Checking State
+
+```rust
+if resource.pending() {
+    // Resource is still loading
+}
+
+if resource.finished() {
+    // Resource has completed
+}
+
+match resource.state()() {
+    UseResourceState::Pending => { /* Loading */ },
+    UseResourceState::Ready => { /* Done */ },
+    UseResourceState::Paused => { /* Paused */ },
+    UseResourceState::Stopped => { /* Cancelled */ },
+}
+```
+
+## Working with Results
+
+For resources that return `Result<T, E>`, you can use the `.result()` method:
+
+```rust
+let resource = use_resource(move || async move {
+    fetch_data().await // Returns Result<Data, Error>
+});
+
+match resource.result() {
+    Some(Ok(data)) => rsx! { 
+        "Success: {data}" 
+    },
+    Some(Err(error)) => rsx! { 
+        "Error: {error}" 
+    },
+    None => rsx! { 
+        "Loading..." 
+    },
+}
+```
+
+## Practical Examples
+
+### User Profile with Refetch
+
+```rust
+fn UserProfile() -> Element {
+    let mut user_id = use_signal(|| 1);
+    let mut resource = use_resource(move || async move {
+        let response = reqwest::get(
+            format!("https://api.example.com/users/{}", user_id())
+        ).await?;
+        
+        response.json::<User>().await
+    });
+
+    rsx! {
+        div {
+            input {
+                r#type: "number",
+                value: "{user_id}",
+                oninput: move |e| {
+                    if let Ok(id) = e.value().parse() {
+                        user_id.set(id);
+                    }
+                }
+            }
+            button { 
+                onclick: move |_| resource.restart(), 
+                "Refresh" 
+            }
+            
+            match &*resource.read_unchecked() {
+                Some(Ok(user)) => rsx! {
+                    div {
+                        h2 { "{user.name}" }
+                        p { "{user.email}" }
+                    }
+                },
+                Some(Err(err)) => rsx! {
+                    div { class: "error",
+                        "Failed to load user: {err}"
+                    }
+                },
+                None => rsx! {
+                    div { class: "loading",
+                        "Loading user..."
+                    }
+                },
+            }
+        }
+    }
+}
+```
+
+### Search with Debouncing
+
+```rust
+fn SearchComponent() -> Element {
+    let mut search_term = use_signal(|| String::new());
+    
+    let search_results = use_resource(move || async move {
+        let term = search_term();
+        
+        // Don't search for empty strings
+        if term.is_empty() {
+            return Ok(vec![]);
+        }
+        
+        // Debounce by adding a small delay
+        tokio::time::sleep(Duration::from_millis(300)).await;
+        
+        // Perform the search
+        reqwest::get(format!("https://api.example.com/search?q={term}"))
+            .await?
+            .json::<Vec<SearchResult>>()
+            .await
+    });
+
+    rsx! {
+        div {
+            input {
+                r#type: "text",
+                value: "{search_term}",
+                oninput: move |e| search_term.set(e.value()),
+                placeholder: "Search..."
+            }
+            
+            match &*search_results.read_unchecked() {
+                Some(Ok(results)) => rsx! {
+                    ul {
+                        for result in results {
+                            li { "{result.title}" }
+                        }
+                    }
+                },
+                Some(Err(e)) => rsx! { "Error: {e}" },
+                None => rsx! { "Searching..." },
+            }
+        }
+    }
+}
+```
+
+### Multiple Dependent Resources
+
+```rust
+fn Dashboard() -> Element {
+    let user = use_resource(|| async move {
+        fetch_current_user().await
+    });
+    
+    let posts = use_resource(move || async move {
+        // Wait for user to load, then fetch their posts
+        if let Some(Ok(user_data)) = user.read().as_ref() {
+            fetch_user_posts(user_data.id).await
+        } else {
+            Ok(vec![])
+        }
+    });
+
+    rsx! {
+        div {
+            h1 { "Dashboard" }
+            
+            match &*user.read_unchecked() {
+                Some(Ok(user_data)) => rsx! {
+                    p { "Welcome, {user_data.name}!" }
+                },
+                _ => rsx! { "Loading user..." },
+            }
+            
+            match &*posts.read_unchecked() {
+                Some(Ok(post_list)) => rsx! {
+                    ul {
+                        for post in post_list {
+                            li { "{post.title}" }
+                        }
+                    }
+                },
+                Some(Err(e)) => rsx! { "Error loading posts: {e}" },
+                None => rsx! { "Loading posts..." },
+            }
+        }
+    }
+}
+```
+
+## Server-Side Rendering
+
+`use_resource` works with SSR and will serialize data for hydration:
+
+```rust
+fn app() -> Element {
+    // This runs on the server during SSR
+    // The result is serialized and sent to the client
+    let data = use_resource(|| async move {
+        database_query().await
+    });
+
+    // During hydration, the client uses the pre-fetched data
+    // instead of re-fetching
+    
+    rsx! { /* ... */ }
+}
+```
+
+## Best Practices
+
+1. **Handle All States** - Always handle None, Ok, and Err cases
+2. **Use Signals for Dependencies** - Read signals inside the future for reactivity
+3. **Debounce Frequent Updates** - Add delays for rapid signal changes (like search)
+4. **Clear Stale Data** - Use `.clear()` when appropriate
+5. **Error Handling** - Always return `Result` types for robust error handling
+6. **Avoid Blocking** - Never block the async runtime
+7. **Loading States** - Provide good UX with loading indicators
+
+## Differences from `use_future`
+
+| Feature | `use_resource` | `use_future` |
+|---------|----------------|-------------|
+| Returns value | ✅ Yes | ❌ No |
+| Reactive | ✅ Yes | ❌ No |
+| SSR Support | ✅ Yes | ❌ No |
+| Use case | Data fetching | Background tasks |
+| Value type | `Option<T>` | N/A |
+
+## Next Steps
+
+- Learn about [Suspense boundaries](/async/suspense) for better loading UX
+- Understand [Error handling](/async/error-handling) patterns
+- See [use_future](/async/futures) for background tasks

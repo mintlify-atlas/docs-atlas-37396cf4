@@ -1,0 +1,551 @@
+---
+title: Mobile Platform
+description: Build native iOS and Android applications
+---
+
+Dioxus supports mobile app development for both iOS and Android using the same desktop renderer infrastructure (Wry/Tao). Your Rust code compiles natively while the UI renders through the platform's native webview.
+
+## Quick Start
+
+### Prerequisites
+
+**For iOS:**
+- macOS with Xcode installed
+- iOS Simulator or physical device
+- Rust iOS targets: `rustup target add aarch64-apple-ios`
+
+**For Android:**
+- Android SDK and NDK installed
+- Android Studio (recommended)
+- Rust Android targets:
+  ```bash
+  rustup target add aarch64-linux-android
+  rustup target add armv7-linux-androideabi
+  rustup target add i686-linux-android
+  rustup target add x86_64-linux-android
+  ```
+
+### Create a Mobile App
+
+Initialize a new mobile project:
+
+```bash
+dx new my-app --platform mobile
+cd my-app
+```
+
+Your app structure:
+
+```rust
+use dioxus::prelude::*;
+
+fn main() {
+    dioxus::launch(App);
+}
+
+#[component]
+fn App() -> Element {
+    let mut count = use_signal(|| 0);
+    
+    rsx! {
+        div { 
+            style: "padding: 20px; text-align: center;",
+            h1 { "Mobile App" }
+            button { 
+                onclick: move |_| count += 1,
+                style: "padding: 10px 20px; font-size: 18px;",
+                "Count: {count}"
+            }
+        }
+    }
+}
+```
+
+## iOS Development
+
+### Run on iOS Simulator
+
+```bash
+dx serve --platform ios
+```
+
+This will:
+1. Build your Rust code for iOS
+2. Generate an Xcode project
+3. Launch the iOS Simulator
+4. Install and run your app
+
+### Run on Physical Device
+
+1. Connect your iOS device
+2. Configure signing in Xcode
+3. Run:
+   ```bash
+   dx serve --platform ios --device
+   ```
+
+### Build for Release
+
+```bash
+dx build --platform ios --release
+```
+
+The `.app` bundle will be in `target/ios/release/`.
+
+### iOS-Specific Configuration
+
+Create an `Info.plist` for iOS-specific settings:
+
+```xml
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>CFBundleName</key>
+    <string>My App</string>
+    <key>CFBundleDisplayName</key>
+    <string>My App</string>
+    <key>CFBundleIdentifier</key>
+    <string>com.example.myapp</string>
+    <key>CFBundleVersion</key>
+    <string>1.0</string>
+    <key>LSRequiresIPhoneOS</key>
+    <true/>
+    <key>UILaunchStoryboardName</key>
+    <string>LaunchScreen</string>
+    <key>UISupportedInterfaceOrientations</key>
+    <array>
+        <string>UIInterfaceOrientationPortrait</string>
+        <string>UIInterfaceOrientationLandscapeLeft</string>
+        <string>UIInterfaceOrientationLandscapeRight</string>
+    </array>
+</dict>
+</plist>
+```
+
+## Android Development
+
+### Run on Android Emulator
+
+```bash
+dx serve --platform android
+```
+
+This will:
+1. Build your Rust code for Android
+2. Generate an Android project
+3. Launch the Android Emulator
+4. Install and run your APK
+
+### Run on Physical Device
+
+1. Enable USB debugging on your device
+2. Connect via USB
+3. Run:
+   ```bash
+   dx serve --platform android --device
+   ```
+
+### Build for Release
+
+```bash
+dx build --platform android --release
+```
+
+The APK will be in `target/android/release/`.
+
+### Android-Specific Configuration
+
+Configure your app in `Dioxus.toml`:
+
+```toml
+[android]
+package = "com.example.myapp"
+version_name = "1.0.0"
+version_code = 1
+
+[android.permissions]
+INTERNET = true
+CAMERA = true
+ACCESS_FINE_LOCATION = true
+```
+
+### Android Manifest
+
+Customize `AndroidManifest.xml` for advanced features:
+
+```xml
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    package="com.example.myapp">
+    
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.CAMERA" />
+    
+    <application
+        android:label="My App"
+        android:icon="@mipmap/ic_launcher"
+        android:theme="@style/Theme.AppCompat.Light.NoActionBar">
+        
+        <activity
+            android:name=".MainActivity"
+            android:configChanges="orientation|keyboardHidden|screenSize"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+    </application>
+</manifest>
+```
+
+## Mobile-Specific Features
+
+### Touch Events
+
+Handle touch interactions:
+
+```rust
+use dioxus::prelude::*;
+
+#[component]
+fn TouchExample() -> Element {
+    let mut position = use_signal(|| (0.0, 0.0));
+    
+    rsx! {
+        div {
+            ontouchstart: move |evt| {
+                if let Some(touch) = evt.touches().first() {
+                    position.set((touch.page_x(), touch.page_y()));
+                }
+            },
+            ontouchmove: move |evt| {
+                if let Some(touch) = evt.touches().first() {
+                    position.set((touch.page_x(), touch.page_y()));
+                }
+            },
+            style: "width: 100%; height: 100vh; background: #f0f0f0;",
+            "Touch Position: ({position.0}, {position.1})"
+        }
+    }
+}
+```
+
+### Responsive Design
+
+Detect and respond to screen size:
+
+```rust
+use dioxus::prelude::*;
+
+#[component]
+fn ResponsiveLayout() -> Element {
+    rsx! {
+        style { {include_str!("./mobile.css")} }
+        div { class: "container",
+            h1 { class: "mobile-title", "Mobile App" }
+            div { class: "button-grid",
+                button { class: "mobile-button", "Button 1" }
+                button { class: "mobile-button", "Button 2" }
+                button { class: "mobile-button", "Button 3" }
+            }
+        }
+    }
+}
+```
+
+```css
+/* mobile.css */
+.container {
+    padding: env(safe-area-inset-top) env(safe-area-inset-right) 
+             env(safe-area-inset-bottom) env(safe-area-inset-left);
+    max-width: 100%;
+}
+
+.mobile-title {
+    font-size: clamp(1.5rem, 5vw, 3rem);
+    text-align: center;
+}
+
+.button-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+    gap: 1rem;
+    padding: 1rem;
+}
+
+.mobile-button {
+    padding: 1rem;
+    font-size: 1.2rem;
+    min-height: 60px;
+    touch-action: manipulation;
+}
+```
+
+### Device Orientation
+
+```rust
+use dioxus::prelude::*;
+
+#[component]
+fn OrientationDetector() -> Element {
+    let mut orientation = use_signal(|| "unknown");
+    
+    use_effect(move || {
+        spawn(async move {
+            // Detect orientation using window dimensions
+            let window = web_sys::window().unwrap();
+            let width = window.inner_width().unwrap().as_f64().unwrap();
+            let height = window.inner_height().unwrap().as_f64().unwrap();
+            
+            orientation.set(if width > height {
+                "landscape"
+            } else {
+                "portrait"
+            });
+        });
+    });
+    
+    rsx! {
+        div { "Orientation: {orientation}" }
+    }
+}
+```
+
+### Haptic Feedback
+
+Trigger device vibration:
+
+```rust
+use dioxus::prelude::*;
+
+#[component]
+fn HapticButton() -> Element {
+    let trigger_haptic = move |_| {
+        #[cfg(target_os = "android")]
+        {
+            // Android vibration API
+            use jni::JNIEnv;
+            // Call Java vibration API
+        }
+        
+        #[cfg(target_os = "ios")]
+        {
+            // iOS haptic feedback
+            // Use AudioToolbox framework
+        }
+    };
+    
+    rsx! {
+        button { onclick: trigger_haptic, "Tap for Haptic" }
+    }
+}
+```
+
+### Native Plugins
+
+Access native device features through custom plugins:
+
+```rust
+// lib.rs
+#[cfg(target_os = "android")]
+pub mod android {
+    use jni::JNIEnv;
+    use jni::objects::JObject;
+    
+    pub fn call_native_method() {
+        // JNI calls to Android APIs
+    }
+}
+
+#[cfg(target_os = "ios")]
+pub mod ios {
+    use objc::runtime::Object;
+    
+    pub fn call_native_method() {
+        // Objective-C calls to iOS APIs
+    }
+}
+```
+
+## Camera Access
+
+Use the device camera:
+
+```rust
+use dioxus::prelude::*;
+
+#[component]
+fn CameraAccess() -> Element {
+    let mut image_src = use_signal(|| String::new());
+    
+    let take_photo = move |_| {
+        spawn(async move {
+            // Use file input with camera capture
+            // Or native camera APIs
+        });
+    };
+    
+    rsx! {
+        div {
+            input {
+                r#type: "file",
+                accept: "image/*",
+                capture: "environment",
+                onchange: move |evt| {
+                    spawn(async move {
+                        // Handle file selection
+                    });
+                }
+            }
+            if !image_src().is_empty() {
+                img { src: "{image_src}" }
+            }
+        }
+    }
+}
+```
+
+## Geolocation
+
+```rust
+use dioxus::prelude::*;
+
+#[component]
+fn Location() -> Element {
+    let mut position = use_signal(|| "Getting location...".to_string());
+    
+    use_effect(move || {
+        spawn(async move {
+            // Request location permission
+            // Use Geolocation API
+            position.set("Lat: 0.0, Lng: 0.0".to_string());
+        });
+    });
+    
+    rsx! {
+        div { "{position}" }
+    }
+}
+```
+
+## Local Storage
+
+Persist data on mobile:
+
+```rust
+use dioxus::prelude::*;
+
+#[component]
+fn PersistentData() -> Element {
+    let mut data = use_signal(|| load_from_storage());
+    
+    let save = move || {
+        save_to_storage(&data());
+    };
+    
+    rsx! {
+        button { onclick: move |_| save(), "Save Data" }
+    }
+}
+
+fn load_from_storage() -> String {
+    // Load from platform-specific storage
+    String::new()
+}
+
+fn save_to_storage(data: &str) {
+    // Save to platform-specific storage
+}
+```
+
+## Performance Optimization
+
+### 1. Minimize JavaScript Bridge Calls
+
+```rust
+// Bad: Multiple calls
+for item in items {
+    eval_js(&format!("update({})", item));
+}
+
+// Good: Single batched call
+let batch = items.iter().map(|i| format!("{}", i)).collect::<Vec<_>>().join(",");
+eval_js(&format!("updateBatch([{}])", batch));
+```
+
+### 2. Optimize Images
+
+Use responsive images and lazy loading:
+
+```rust
+rsx! {
+    img {
+        src: "image.jpg",
+        loading: "lazy",
+        srcset: "image-320w.jpg 320w, image-640w.jpg 640w, image-1280w.jpg 1280w"
+    }
+}
+```
+
+### 3. Reduce Bundle Size
+
+Strip debug symbols and optimize:
+
+```bash
+dx build --platform android --release
+strip target/aarch64-linux-android/release/libmyapp.so
+```
+
+## Testing
+
+### iOS Simulator Testing
+
+```bash
+dx test --platform ios --simulator
+```
+
+### Android Emulator Testing
+
+```bash
+dx test --platform android --emulator
+```
+
+## Publishing
+
+### iOS App Store
+
+1. Build release version
+2. Archive in Xcode
+3. Upload to App Store Connect
+4. Submit for review
+
+### Google Play Store
+
+1. Build signed APK:
+   ```bash
+   dx bundle --platform android --release
+   ```
+2. Upload to Google Play Console
+3. Submit for review
+
+## Troubleshooting
+
+### iOS Build Issues
+
+- Ensure Xcode is up to date
+- Check provisioning profiles
+- Verify bundle identifier matches
+
+### Android Build Issues
+
+- Update Android SDK and NDK
+- Check `ANDROID_HOME` environment variable
+- Verify NDK version compatibility
+
+## Next Steps
+
+- [Desktop Platform](/platforms/desktop) - Desktop development
+- [Assets](/assets) - Managing app resources
+- [Deployment](/deployment) - Publishing your app

@@ -1,0 +1,450 @@
+---
+title: Hooks
+description: Learn about hooks in Dioxus - the building blocks for component logic
+---
+
+Hooks are special functions that let you use state and other Dioxus features in components. They follow specific rules to ensure consistent behavior.
+
+## What Are Hooks?
+
+Hooks are functions that:
+- Start with `use_` prefix
+- Must be called in the same order every render
+- Can only be called from component functions or other hooks
+- Manage component lifecycle, state, and side effects
+
+```rust
+use dioxus::prelude::*;
+
+#[component]
+fn MyComponent() -> Element {
+    // Hooks are called at the top of the component
+    let mut count = use_signal(|| 0);
+    let doubled = use_memo(move || count() * 2);
+    
+    rsx! {
+        p { "Count: {count}, Doubled: {doubled}" }
+    }
+}
+```
+
+## Rules of Hooks
+
+<Warning>
+Hooks must be called in the same order on every render. Breaking this rule will cause panics.
+</Warning>
+
+### Rule 1: Call Hooks at the Top Level
+
+Don't call hooks inside loops, conditions, or nested functions:
+
+```rust
+// ❌ Don't do this
+fn BadComponent() -> Element {
+    let condition = true;
+    
+    if condition {
+        let state = use_signal(|| 0); // Wrong! Conditional hook
+    }
+    
+    rsx! { div {} }
+}
+
+// ✅ Do this instead
+fn GoodComponent() -> Element {
+    let mut state = use_signal(|| 0);
+    
+    if state() > 0 {
+        // Use the state value, not create hooks
+    }
+    
+    rsx! { div {} }
+}
+```
+
+### Rule 2: Only Call Hooks from Components or Hooks
+
+```rust
+// ❌ Don't call hooks from regular functions
+fn regular_function() {
+    let state = use_signal(|| 0); // Wrong!
+}
+
+// ✅ Call hooks from components
+#[component]
+fn MyComponent() -> Element {
+    let state = use_signal(|| 0);
+    rsx! { div {} }
+}
+
+// ✅ Or from custom hooks
+fn use_counter(initial: i32) -> Signal<i32> {
+    use_signal(move || initial)
+}
+```
+
+### Why These Rules?
+
+Dioxus stores hook state in a list by order of calls. If the order changes, state gets mismatched:
+
+```rust
+fn Component() -> Element {
+    let number = use_signal(|| 1);    // Hook 1
+    let string = use_signal(|| "a");  // Hook 2
+    let bool = use_signal(|| true);   // Hook 3
+    
+    // Internally stored as: [1, "a", true]
+    // Next render expects the same order!
+    rsx! { div {} }
+}
+```
+
+## Built-in Hooks
+
+### State Hooks
+
+#### use_signal
+
+Create reactive state:
+
+```rust
+let mut count = use_signal(|| 0);
+
+// Read
+let value = count();
+
+// Write
+count += 1;
+count.set(42);
+count.with_mut(|c| *c = 100);
+```
+
+See [use_signal source](~/workspace/source/packages/hooks/src/use_signal.rs:39)
+
+#### use_signal_sync
+
+Create thread-safe state:
+
+```rust
+let mut count = use_signal_sync(|| 0);
+
+// Can be used across threads
+use_future(move || async move {
+    tokio::spawn(async move {
+        *count.write() += 1;
+    }).await;
+});
+```
+
+### Computed State Hooks
+
+#### use_memo
+
+Compute derived values:
+
+```rust
+let mut count = use_signal(|| 0);
+let doubled = use_memo(move || count() * 2);
+
+// doubled updates automatically when count changes
+rsx! {
+    "Count: {count}, Doubled: {doubled}"
+}
+```
+
+#### use_resource
+
+Fetch async data:
+
+```rust
+let mut user_id = use_signal(|| 1);
+
+let user = use_resource(move || async move {
+    fetch_user(user_id()).await
+});
+
+rsx! {
+    match user() {
+        Some(Ok(user)) => rsx! { p { "User: {user.name}" } },
+        Some(Err(e)) => rsx! { p { "Error: {e}" } },
+        None => rsx! { p { "Loading..." } },
+    }
+}
+```
+
+### Effect Hooks
+
+#### use_effect
+
+Run side effects:
+
+```rust
+let mut count = use_signal(|| 0);
+
+// Runs on mount and when count changes
+use_effect(move || {
+    println!("Count is now: {}", count());
+});
+```
+
+See [use_effect source](~/workspace/source/packages/hooks/src/use_effect.rs:11)
+
+#### use_future
+
+Run async tasks:
+
+```rust
+let mut data = use_signal(|| None);
+
+use_future(move || async move {
+    let result = fetch_data().await;
+    data.set(Some(result));
+});
+```
+
+### Context Hooks
+
+#### use_context
+
+Access shared state:
+
+```rust
+// Provider
+fn App() -> Element {
+    use_context_provider(|| Signal::new(0));
+    rsx! { Child {} }
+}
+
+// Consumer
+fn Child() -> Element {
+    let count: Signal<i32> = use_context();
+    rsx! { "Count: {count}" }
+}
+```
+
+#### use_context_provider
+
+Provide context to descendants:
+
+```rust
+fn App() -> Element {
+    use_context_provider(|| AppState {
+        user: Signal::new(None),
+        theme: Signal::new(Theme::Light),
+    });
+    
+    rsx! { /* children can access AppState */ }
+}
+```
+
+### Async Hooks
+
+#### use_coroutine
+
+Create a coroutine with a channel:
+
+```rust
+let submit = use_coroutine(|mut rx| async move {
+    while let Some(data) = rx.next().await {
+        // Process data
+        save_to_server(data).await;
+    }
+});
+
+rsx! {
+    button {
+        onclick: move |_| submit.send(form_data.clone()),
+        "Submit"
+    }
+}
+```
+
+### Lifecycle Hooks
+
+#### use_drop
+
+Run cleanup on component unmount:
+
+```rust
+use_drop(move || {
+    println!("Component unmounting!");
+    // Cleanup resources
+});
+```
+
+## Creating Custom Hooks
+
+Custom hooks let you extract reusable logic:
+
+```rust
+// Custom hook for form input
+fn use_input(initial: &str) -> (Signal<String>, impl Fn() -> String) {
+    let mut value = use_signal(|| initial.to_string());
+    
+    let get_value = move || value();
+    
+    (value, get_value)
+}
+
+// Usage
+fn LoginForm() -> Element {
+    let (mut username, get_username) = use_input("");
+    let (mut password, get_password) = use_input("");
+    
+    rsx! {
+        input {
+            value: "{username}",
+            oninput: move |e| username.set(e.value()),
+        }
+        input {
+            r#type: "password",
+            value: "{password}",
+            oninput: move |e| password.set(e.value()),
+        }
+        button {
+            onclick: move |_| {
+                login(get_username(), get_password());
+            },
+            "Login"
+        }
+    }
+}
+```
+
+### Hook Composition
+
+Compose multiple hooks:
+
+```rust
+fn use_counter(initial: i32, step: i32) -> Signal<i32> {
+    let mut count = use_signal(move || initial);
+    
+    use_effect(move || {
+        println!("Counter: {}", count());
+    });
+    
+    count
+}
+
+fn use_toggle() -> (Signal<bool>, impl Fn()) {
+    let mut state = use_signal(|| false);
+    let toggle = move || state.toggle();
+    
+    (state, toggle)
+}
+```
+
+## Common Patterns
+
+### Debouncing Input
+
+```rust
+fn use_debounced_value<T: Clone + 'static>(
+    value: T,
+    delay_ms: u64,
+) -> Signal<T> {
+    let mut debounced = use_signal(|| value.clone());
+    
+    use_effect(move || {
+        let value = value.clone();
+        spawn(async move {
+            async_std::task::sleep(
+                std::time::Duration::from_millis(delay_ms)
+            ).await;
+            debounced.set(value);
+        });
+    });
+    
+    debounced
+}
+```
+
+### Previous Value
+
+```rust
+fn use_previous<T: Clone + 'static>(value: T) -> Signal<Option<T>> {
+    let mut previous = use_signal(|| None);
+    
+    use_effect(move || {
+        previous.set(Some(value.clone()));
+    });
+    
+    previous
+}
+```
+
+### Local Storage
+
+```rust
+fn use_local_storage(
+    key: &'static str,
+    initial: String,
+) -> Signal<String> {
+    let mut value = use_signal(move || {
+        // Load from localStorage
+        load_from_storage(key).unwrap_or(initial.clone())
+    });
+    
+    use_effect(move || {
+        // Save to localStorage when value changes
+        save_to_storage(key, &value());
+    });
+    
+    value
+}
+```
+
+## Hook Dependencies
+
+Use `use_reactive!` for explicit dependencies:
+
+```rust
+#[component]
+fn UserProfile(user_id: i32) -> Element {
+    let user = use_resource(
+        use_reactive!(|user_id| async move {
+            fetch_user(user_id).await
+        })
+    );
+    
+    rsx! { /* render user */ }
+}
+```
+
+## Best Practices
+
+<CardGroup cols={2}>
+  <Card title="Follow Hook Rules" icon="ruler">
+    Always call hooks in the same order - no conditions, loops, or early returns before hooks.
+  </Card>
+  
+  <Card title="Name with use_ Prefix" icon="signature">
+    Custom hooks must start with `use_` to clearly indicate they follow hook rules.
+  </Card>
+  
+  <Card title="Extract Reusable Logic" icon="arrow-up-right-from-square">
+    Create custom hooks when you find yourself duplicating stateful logic.
+  </Card>
+  
+  <Card title="Keep Effects Focused" icon="bullseye">
+    Each `use_effect` should do one thing. Split complex effects into multiple hooks.
+  </Card>
+</CardGroup>
+
+## Comparison with React Hooks
+
+| React | Dioxus |
+|-------|--------|
+| `useState` | `use_signal` |
+| `useEffect` | `use_effect` |
+| `useMemo` | `use_memo` |
+| `useCallback` | `use_callback` |
+| `useContext` | `use_context` |
+| `useReducer` | Custom pattern with signals |
+| `useRef` | `use_signal` (signals are Copy) |
+
+## See Also
+
+- [Signals](/concepts/signals) - Reactive state primitives
+- [State](/concepts/state) - State management overview
+- [Effects Guide](/guides/effects) - Working with side effects

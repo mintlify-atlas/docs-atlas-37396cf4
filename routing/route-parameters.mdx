@@ -1,0 +1,576 @@
+---
+title: Route Parameters
+description: Extract and parse parameters from URL paths, queries, and hash fragments
+---
+
+Dioxus routes can extract data from URLs through path segments, query parameters, and hash fragments. All parameters are type-safe and automatically parsed.
+
+## Path Parameters
+
+Path parameters are dynamic segments in the URL path, prefixed with `:` in route definitions.
+
+### Single Parameter
+
+```rust
+use dioxus::prelude::*;
+
+#[derive(Routable, Clone, PartialEq)]
+enum Route {
+    #[route("/user/:id")]
+    User { id: usize },
+}
+
+#[component]
+fn User(id: usize) -> Element {
+    rsx! { h1 { "User {id}" } }
+}
+```
+
+URL `/user/123` extracts `id = 123`.
+
+### Multiple Parameters
+
+```rust
+#[derive(Routable, Clone, PartialEq)]
+enum Route {
+    #[route("/blog/:year/:month/:slug")]
+    BlogPost {
+        year: u32,
+        month: u32,
+        slug: String,
+    },
+}
+
+#[component]
+fn BlogPost(year: u32, month: u32, slug: String) -> Element {
+    rsx! {
+        h1 { "{slug}" }
+        p { "Published: {month}/{year}" }
+    }
+}
+```
+
+URL `/blog/2024/03/hello-world` extracts:
+- `year = 2024`
+- `month = 3`
+- `slug = "hello-world"`
+
+### Supported Types
+
+Path parameters can be any type implementing `FromStr`:
+
+```rust
+#[route("/user/:id")]
+User { id: usize },         // Numbers
+
+#[route("/post/:slug")]
+Post { slug: String },      // Strings
+
+#[route("/active/:enabled")]
+Filter { enabled: bool },   // Booleans
+
+#[route("/uuid/:id")]
+Item { id: Uuid },          // Custom types with FromStr
+```
+
+### Custom Types
+
+Implement `FromStr` and `Display` for custom types:
+
+```rust
+use std::fmt;
+use std::str::FromStr;
+
+#[derive(Clone, PartialEq, Debug)]
+struct UserId(usize);
+
+impl FromStr for UserId {
+    type Err = std::num::ParseIntError;
+    
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        Ok(UserId(s.parse()?))
+    }
+}
+
+impl fmt::Display for UserId {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+
+// Use in route
+#[route("/user/:id")]
+User { id: UserId },
+```
+
+### Parse Errors
+
+If parsing fails, the route doesn't match and the router tries the next route:
+
+```rust
+#[derive(Routable, Clone, PartialEq)]
+enum Route {
+    #[route("/user/:id")]
+    User { id: usize },      // Only matches numeric IDs
+    
+    #[route("/:..path")]
+    NotFound { path: Vec<String> },  // Catches failed parses
+}
+```
+
+URL `/user/abc` won't match `User` (parse error), falls through to `NotFound`.
+
+## Catch-All Parameters
+
+Capture multiple path segments with `:..name`:
+
+```rust
+#[derive(Routable, Clone, PartialEq)]
+enum Route {
+    #[route("/files/:..path")]
+    Files { path: Vec<String> },
+}
+
+#[component]
+fn Files(path: Vec<String>) -> Element {
+    let full_path = path.join("/");
+    rsx! { h1 { "File: {full_path}" } }
+}
+```
+
+URL `/files/docs/2024/report.pdf` extracts:
+- `path = vec!["docs", "2024", "report.pdf"]`
+
+### 404 Pages
+
+Catch-all routes are perfect for 404 pages:
+
+```rust
+#[derive(Routable, Clone, PartialEq)]
+enum Route {
+    #[route("/")]
+    Home {},
+    
+    // Catches all unmatched routes
+    #[route("/:..path")]
+    NotFound { path: Vec<String> },
+}
+
+#[component]
+fn NotFound(path: Vec<String>) -> Element {
+    rsx! {
+        h1 { "404: Page Not Found" }
+        p { "Could not find: /{path:?}" }
+        Link { to: Route::Home {}, "Go Home" }
+    }
+}
+```
+
+<Warning>
+  Place catch-all routes last in your enum to avoid matching more specific routes.
+</Warning>
+
+## Query Parameters
+
+Query parameters are extracted from the URL query string after `?`.
+
+### Single Query Parameter
+
+```rust
+#[derive(Routable, Clone, PartialEq)]
+enum Route {
+    #[route("/search?:q")]
+    Search { q: String },
+}
+
+#[component]
+fn Search(q: String) -> Element {
+    rsx! {
+        h1 { "Search Results" }
+        p { "Query: {q}" }
+    }
+}
+```
+
+URL `/search?q=rust` extracts `q = "rust"`.
+
+### Multiple Query Parameters
+
+```rust
+#[derive(Routable, Clone, PartialEq)]
+enum Route {
+    #[route("/products?:category&:sort&:page")]
+    Products {
+        category: String,
+        sort: String,
+        page: usize,
+    },
+}
+```
+
+URL `/products?category=books&sort=price&page=2` extracts:
+- `category = "books"`
+- `sort = "price"`
+- `page = 2`
+
+### Optional Query Parameters
+
+Use `Option<T>` for optional parameters:
+
+```rust
+#[derive(Routable, Clone, PartialEq, Debug)]
+enum Route {
+    #[route("/search?:q&:page")]
+    Search {
+        q: String,
+        page: Option<usize>,  // Optional parameter
+    },
+}
+
+#[component]
+fn Search(q: String, page: Option<usize>) -> Element {
+    let page_num = page.unwrap_or(1);
+    rsx! {
+        h1 { "Search: {q}" }
+        p { "Page {page_num}" }
+    }
+}
+```
+
+Both URLs work:
+- `/search?q=rust` → `q = "rust"`, `page = None`
+- `/search?q=rust&page=2` → `q = "rust"`, `page = Some(2)`
+
+### Default Values
+
+Query parameter types must implement `Default`:
+
+```rust
+#[derive(Clone, PartialEq, Debug)]
+struct SearchOptions {
+    sort_by: String,
+}
+
+impl Default for SearchOptions {
+    fn default() -> Self {
+        Self {
+            sort_by: "relevance".to_string(),
+        }
+    }
+}
+
+impl FromStr for SearchOptions {
+    type Err = String;
+    
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        Ok(Self { sort_by: s.to_string() })
+    }
+}
+
+impl fmt::Display for SearchOptions {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}", self.sort_by)
+    }
+}
+```
+
+### Catch-All Query String
+
+Capture the entire query string with `?:..name`:
+
+```rust
+#[derive(Routable, Clone, PartialEq)]
+enum Route {
+    #[route("/search?:..query")]
+    Search { query: String },
+}
+
+#[component]
+fn Search(query: String) -> Element {
+    // Parse custom query format
+    rsx! { p { "Raw query: {query}" } }
+}
+```
+
+URL `/search?foo=bar&baz=qux` → `query = "foo=bar&baz=qux"`
+
+### Reactive Query Parameters
+
+Use `ReadSignal` to make parameters reactive:
+
+```rust
+#[component]
+fn Search(q: ReadSignal<String>, page: ReadSignal<usize>) -> Element {
+    // Automatically recomputes when q or page changes
+    let results = use_memo(move || {
+        fetch_results(&q.read(), page())
+    });
+    
+    rsx! {
+        input {
+            value: "{q}",
+            oninput: move |e| {
+                navigator().replace(Route::Search {
+                    q: e.value(),
+                    page: page(),
+                });
+            }
+        }
+        // Display results
+    }
+}
+```
+
+See the [query_segment_search example](/home/daytona/workspace/source/examples/06-routing/query_segment_search.rs) for a full implementation.
+
+## Hash Fragments
+
+Capture URL hash fragments (anchor links) with `#:name`:
+
+```rust
+#[derive(Routable, Clone, PartialEq)]
+enum Route {
+    #[route("/docs#:section")]
+    Docs { section: String },
+}
+
+#[component]
+fn Docs(section: String) -> Element {
+    use_effect(move || {
+        // Scroll to section
+        if let Some(element) = document().get_element_by_id(&section) {
+            element.scroll_into_view();
+        }
+    });
+    
+    rsx! {
+        h1 { "Documentation" }
+        div { id: "introduction", "Introduction..." }
+        div { id: "installation", "Installation..." }
+    }
+}
+```
+
+URL `/docs#installation` extracts `section = "installation"`.
+
+### Hash Fragment State
+
+Store application state in the hash:
+
+```rust
+#[derive(Clone, PartialEq, Default, Debug)]
+struct AppState {
+    count: usize,
+}
+
+impl fmt::Display for AppState {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "count:{}", self.count)
+    }
+}
+
+impl FromStr for AppState {
+    type Err = String;
+    
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let count = s.strip_prefix("count:")
+            .and_then(|s| s.parse().ok())
+            .unwrap_or(0);
+        Ok(AppState { count })
+    }
+}
+
+#[derive(Routable, Clone, PartialEq)]
+enum Route {
+    #[route("/app#:state")]
+    App { state: AppState },
+}
+```
+
+## Combining Parameters
+
+Mix path, query, and hash parameters:
+
+```rust
+#[derive(Routable, Clone, PartialEq)]
+enum Route {
+    #[route("/blog/:slug?:highlight#:section")]
+    BlogPost {
+        slug: String,           // Path parameter
+        highlight: String,      // Query parameter
+        section: String,        // Hash fragment
+    },
+}
+```
+
+URL `/blog/my-post?highlight=code#comments` extracts:
+- `slug = "my-post"`
+- `highlight = "code"`
+- `section = "comments"`
+
+## Navigating with Parameters
+
+### Using Link
+
+```rust
+rsx! {
+    Link {
+        to: Route::User { id: 123 },
+        "View User"
+    }
+    Link {
+        to: Route::Search {
+            q: "rust".to_string(),
+            page: Some(2),
+        },
+        "Search Results"
+    }
+}
+```
+
+### Using Navigator
+
+```rust
+let nav = use_navigator();
+
+rsx! {
+    button {
+        onclick: move |_| {
+            nav.push(Route::BlogPost {
+                year: 2024,
+                month: 3,
+                slug: "new-post".to_string(),
+            });
+        },
+        "View Post"
+    }
+}
+```
+
+## URL Encoding
+
+Parameters are automatically URL encoded/decoded:
+
+```rust
+#[route("/search?:q")]
+Search { q: String },
+```
+
+- `"hello world"` → `/search?q=hello%20world`
+- `/search?q=hello%20world` → `q = "hello world"`
+
+Special characters are handled automatically:
+
+```rust
+Link {
+    to: Route::Search { q: "hello & goodbye".to_string() },
+    "Search"
+}
+// Generates: /search?q=hello%20%26%20goodbye
+```
+
+## Type Safety Benefits
+
+The enum router provides compile-time guarantees:
+
+```rust
+// ✅ Compiles - all parameters provided
+Link { to: Route::User { id: 123 }, "User" }
+
+// ❌ Compile error - missing parameter
+Link { to: Route::User {}, "User" }
+
+// ❌ Compile error - wrong type
+Link { to: Route::User { id: "abc" }, "User" }
+```
+
+Compare with string-based routing:
+
+```rust
+// All compile, but some are wrong!
+<a href="/user/123">User</a>      // ✅ Correct
+<a href="/user">User</a>          // ❌ Missing ID - broken link
+<a href="/user/abc">User</a>      // ❌ Invalid ID - runtime error
+```
+
+## Accessing Current Route
+
+Get the current route with `use_route()`:
+
+```rust
+#[component]
+fn MyComponent() -> Element {
+    let route = use_route::<Route>();
+    
+    match route {
+        Route::User { id } => rsx! { p { "Viewing user {id}" } },
+        Route::Home {} => rsx! { p { "On home page" } },
+        _ => rsx! { p { "Other page" } },
+    }
+}
+```
+
+## Best Practices
+
+1. **Use specific types** - `usize` instead of `String` for IDs
+2. **Validate in components** - Don't trust that parameters are valid
+3. **Provide defaults** - Use `Option` or `Default` for optional params
+4. **Keep URLs readable** - Use descriptive parameter names
+5. **Encode special characters** - Let the router handle encoding
+
+## Common Patterns
+
+### Pagination
+
+```rust
+#[route("/products?:page")]
+Products { page: Option<usize> },
+
+#[component]
+fn Products(page: Option<usize>) -> Element {
+    let current_page = page.unwrap_or(1);
+    
+    rsx! {
+        Link {
+            to: Route::Products { page: Some(current_page + 1) },
+            "Next Page"
+        }
+    }
+}
+```
+
+### Filtering
+
+```rust
+#[route("/products?:category&:min_price&:max_price")]
+Products {
+    category: Option<String>,
+    min_price: Option<f64>,
+    max_price: Option<f64>,
+},
+```
+
+### Breadcrumbs
+
+```rust
+#[route("/docs/:..path")]
+Docs { path: Vec<String> },
+
+#[component]
+fn Docs(path: Vec<String>) -> Element {
+    rsx! {
+        nav {
+            Link { to: Route::Docs { path: vec![] }, "Docs" }
+            for (i, segment) in path.iter().enumerate() {
+                " / "
+                Link {
+                    to: Route::Docs {
+                        path: path[..=i].to_vec()
+                    },
+                    "{segment}"
+                }
+            }
+        }
+    }
+}
+```

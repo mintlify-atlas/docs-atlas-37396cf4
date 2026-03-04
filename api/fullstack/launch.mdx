@@ -1,0 +1,451 @@
+---
+title: "launch() Function"
+description: "Launch fullstack Dioxus applications with server-side rendering and routing"
+---
+
+The `launch()` function starts a fullstack Dioxus application with integrated server-side rendering, client hydration, and automatic server function registration.
+
+## Basic Usage
+
+```rust
+use dioxus::prelude::*;
+
+fn main() {
+    dioxus::launch(app);
+}
+
+fn app() -> Element {
+    rsx! {
+        h1 { "Hello, Fullstack!" }
+    }
+}
+```
+
+On the server, this:
+- Creates an Axum web server
+- Registers all server functions
+- Sets up SSR rendering
+- Serves static assets
+- Enables hot-reloading in debug mode
+
+On the client, it hydrates the server-rendered HTML.
+
+## Configuration
+
+For advanced configuration, use `serve()` with a custom router:
+
+```rust
+use dioxus::prelude::*;
+use dioxus::server::{axum, ServeConfig};
+
+fn main() {
+    dioxus::serve(|| async move {
+        let cfg = ServeConfig::builder()
+            .enable_out_of_order_streaming();
+        
+        let router = axum::Router::new()
+            .serve_dioxus_application(cfg, app);
+        
+        Ok(router)
+    });
+}
+
+fn app() -> Element {
+    rsx! { h1 { "Configured App" } }
+}
+```
+
+## Launch Functions
+
+### `launch()`
+
+```rust
+pub fn launch(root: fn() -> Element) -> !
+```
+
+Launch a fullstack app with default configuration.
+
+**Parameters**:
+- `root`: Component function to render
+
+**Returns**: Never returns (runs server loop)
+
+**Location**: `packages/fullstack-server/src/launch.rs:38`
+
+**Example**:
+```rust
+fn main() {
+    dioxus::launch(app);
+}
+
+fn app() -> Element {
+    rsx! { div { "My App" } }
+}
+```
+
+### `serve()`
+
+```rust
+pub fn serve<F>(serve_it: impl FnMut() -> F) -> !
+where
+    F: Future<Output = Result<Router, anyhow::Error>> + 'static
+```
+
+Serve a fullstack application with a custom Axum router.
+
+**Parameters**:
+- `serve_it`: Closure returning a `Future<Router>`
+
+**Returns**: Never returns
+
+**Location**: `packages/fullstack-server/src/launch.rs:115`
+
+**Example**:
+```rust
+use dioxus::server::{axum, ServeConfig};
+
+fn main() {
+    dioxus::serve(|| async move {
+        let cfg = ServeConfig::new();
+        let router = axum::Router::new()
+            .serve_dioxus_application(cfg, app);
+        Ok(router)
+    });
+}
+```
+
+### `router()`
+
+```rust
+pub fn router(app: fn() -> Element) -> Router
+```
+
+Create an Axum router for a Dioxus application without starting the server.
+
+**Parameters**:
+- `app`: Component function to render
+
+**Returns**: Configured `axum::Router`
+
+**Location**: `packages/fullstack-server/src/launch.rs:96`
+
+**Example**:
+```rust
+use dioxus::server::router;
+
+#[tokio::main]
+async fn main() {
+    let app_router = router(app);
+    
+    // Combine with other routes
+    let full_router = axum::Router::new()
+        .nest("/app", app_router)
+        .route("/health", axum::routing::get(health_check));
+    
+    // Serve manually
+    let listener = tokio::net::TcpListener::bind("0.0.0.0:8080")
+        .await
+        .unwrap();
+    axum::serve(listener, full_router).await.unwrap();
+}
+```
+
+### `serve_router()`
+
+```rust
+pub async fn serve_router(
+    serve_callback: impl FnMut() -> Pin<Box<dyn Future<Output = Result<Router, anyhow::Error>>>>,
+    addr: SocketAddr,
+)
+```
+
+Serve a router with hot-reloading support in debug mode.
+
+**Parameters**:
+- `serve_callback`: Function returning a new `Router` (called on hot-reload)
+- `addr`: Socket address to bind
+
+**Location**: `packages/fullstack-server/src/launch.rs:134`
+
+**Example**:
+```rust
+use std::net::SocketAddr;
+
+#[tokio::main]
+async fn main() {
+    let addr = SocketAddr::from(([127, 0, 0, 1], 8080));
+    
+    dioxus::server::serve_router(
+        || Box::pin(async {
+            let cfg = ServeConfig::new();
+            let router = axum::Router::new()
+                .serve_dioxus_application(cfg, app);
+            Ok(router)
+        }),
+        addr,
+    )
+    .await;
+}
+```
+
+## ServeConfig
+
+The `ServeConfig` type configures server-side rendering behavior.
+
+### Methods
+
+#### `new()`
+
+```rust
+pub fn new() -> Self
+```
+
+Create a new server configuration with defaults.
+
+#### `builder()`
+
+```rust
+pub fn builder() -> ServeConfigBuilder
+```
+
+Create a builder for customizing configuration.
+
+**Example**:
+```rust
+let cfg = ServeConfig::builder()
+    .enable_out_of_order_streaming()
+    .incremental(IncrementalRendererConfig::new())
+    .build();
+```
+
+## ServeConfigBuilder
+
+Builder for customizing server configuration.
+
+### Methods
+
+#### `enable_out_of_order_streaming()`
+
+```rust
+pub fn enable_out_of_order_streaming(self) -> Self
+```
+
+Enable out-of-order streaming for suspense boundaries.
+
+**Example**:
+```rust
+let cfg = ServeConfig::builder()
+    .enable_out_of_order_streaming()
+    .build();
+```
+
+#### `incremental()`
+
+```rust
+pub fn incremental(self, config: IncrementalRendererConfig) -> Self
+```
+
+Enable incremental static site generation.
+
+**Example**:
+```rust
+let cfg = ServeConfig::builder()
+    .incremental(IncrementalRendererConfig::new())
+    .build();
+```
+
+#### `context_providers()`
+
+```rust
+pub fn context_providers(
+    self,
+    providers: Vec<Arc<dyn Fn() -> Box<dyn Any> + Send + Sync>>,
+) -> Self
+```
+
+Add context providers for server-side rendering.
+
+**Example**:
+```rust
+use std::sync::Arc;
+
+#[derive(Clone)]
+struct Database { /* ... */ }
+
+let db = Database::new();
+let cfg = ServeConfig::builder()
+    .context_providers(vec![
+        Arc::new(move || Box::new(db.clone()) as Box<dyn Any>)
+    ])
+    .build();
+```
+
+## Environment Configuration
+
+The server address and port can be configured via environment variables:
+
+- `IP`: Server IP address (default: `127.0.0.1`)
+- `PORT`: Server port (default: `8080`)
+
+**Example**:
+```bash
+IP=0.0.0.0 PORT=3000 cargo run --features server
+```
+
+## Feature Flags
+
+The fullstack launch requires the `server` feature:
+
+```toml
+[features]
+default = ["web"]
+web = ["dioxus/web"]
+server = ["dioxus/server"]
+```
+
+Build commands:
+```bash
+# Client build
+dx build --platform web
+
+# Server build  
+cargo build --features server
+
+# Development with hot-reload
+dx serve
+```
+
+## Hot-Reloading
+
+In debug mode, the server automatically:
+- Watches for file changes
+- Applies hot-patches to running code
+- Recreates the router on code changes
+- Resets renderer state
+
+No manual restarts needed during development.
+
+## Router Extension Methods
+
+The `DioxusRouterExt` trait adds Dioxus-specific methods to Axum routers:
+
+### `serve_dioxus_application()`
+
+```rust
+pub fn serve_dioxus_application<M>(
+    self,
+    cfg: ServeConfig,
+    component: impl ComponentFunction<(), M> + Send + Sync,
+) -> Self
+```
+
+Register a Dioxus application with automatic:
+- Server function registration
+- Static asset serving
+- SSR rendering handler
+- WebSocket for hot-reload and devtools
+
+**Example**:
+```rust
+use dioxus::server::axum;
+
+let router = axum::Router::new()
+    .serve_dioxus_application(ServeConfig::new(), app);
+```
+
+## Examples
+
+### Basic Fullstack App
+
+```rust
+use dioxus::prelude::*;
+
+fn main() {
+    dioxus::launch(app);
+}
+
+fn app() -> Element {
+    let mut count = use_signal(|| 0);
+    
+    rsx! {
+        h1 { "Counter: {count}" }
+        button {
+            onclick: move |_| count += 1,
+            "Increment"
+        }
+    }
+}
+```
+
+### With Middleware
+
+```rust
+use dioxus::server::{axum, ServeConfig};
+use tower_http::trace::TraceLayer;
+
+fn main() {
+    dioxus::serve(|| async move {
+        let cfg = ServeConfig::new();
+        
+        let router = axum::Router::new()
+            .serve_dioxus_application(cfg, app)
+            .layer(TraceLayer::new_for_http());
+        
+        Ok(router)
+    });
+}
+```
+
+### With Shared State
+
+```rust
+use dioxus::server::{axum, ServeConfig};
+use std::sync::Arc;
+
+#[derive(Clone)]
+struct AppState {
+    database: Arc<Database>,
+}
+
+fn main() {
+    dioxus::serve(|| async move {
+        let state = AppState {
+            database: Arc::new(Database::connect().await?),
+        };
+        
+        let cfg = ServeConfig::builder()
+            .context_providers(vec![
+                Arc::new(move || Box::new(state.clone()) as Box<dyn Any>)
+            ])
+            .build();
+        
+        let router = axum::Router::new()
+            .serve_dioxus_application(cfg, app);
+        
+        Ok(router)
+    });
+}
+```
+
+### Custom Routes
+
+```rust
+use dioxus::server::axum::{self, routing::get};
+
+async fn health() -> &'static str {
+    "OK"
+}
+
+fn main() {
+    dioxus::serve(|| async move {
+        let app_router = dioxus::server::router(app);
+        
+        let router = axum::Router::new()
+            .nest("/app", app_router)
+            .route("/health", get(health))
+            .route("/api/custom", get(custom_endpoint));
+        
+        Ok(router)
+    });
+}
+```

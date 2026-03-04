@@ -1,0 +1,640 @@
+---
+title: HTML Attributes
+description: Complete reference of all HTML attributes available in Dioxus
+---
+
+Dioxus provides comprehensive support for HTML attributes with full type safety. All attributes are available through the `rsx!` macro.
+
+## Global Attributes
+
+Global attributes can be used on any HTML element.
+
+### class
+
+The `class` attribute specifies one or more CSS class names for an element.
+
+```rust
+rsx! {
+    div { class: "container bg-blue", "Content" }
+}
+```
+
+**Multiple Classes**
+
+Dioxus automatically joins multiple class attributes:
+
+```rust
+rsx! {
+    div {
+        class: "base-class",
+        class: "additional-class",
+        "Content"
+    }
+}
+```
+
+**Conditional Classes**
+
+Use unterminated if statements for conditional classes:
+
+```rust
+rsx! {
+    div {
+        class: "base",
+        class: if active { "active" },
+        class: if highlighted { "highlight" },
+        "Content"
+    }
+}
+```
+
+**Reference:** [MDN](https://developer.mozilla.org/en-US/docs/Web/HTML/Global_attributes/class)
+
+### id
+
+The `id` attribute defines a unique identifier for an element.
+
+```rust
+rsx! {
+    div { id: "main-content", "Content" }
+}
+```
+
+**Reference:** [MDN](https://developer.mozilla.org/en-US/docs/Web/HTML/Global_attributes/id)
+
+### style
+
+The `style` attribute contains CSS styling declarations.
+
+```rust
+rsx! {
+    div { style: "color: red; font-size: 16px;", "Styled text" }
+}
+```
+
+**Reference:** [MDN](https://developer.mozilla.org/en-US/docs/Web/HTML/Global_attributes/style)
+
+### title
+
+The `title` attribute provides advisory information about the element.
+
+```rust
+rsx! {
+    button { title: "Click to submit", "Submit" }
+}
+```
+
+**Reference:** [MDN](https://developer.mozilla.org/en-US/docs/Web/HTML/Global_attributes/title)
+
+### lang
+
+The `lang` attribute defines the language of the element's content.
+
+```rust
+rsx! {
+    p { lang: "en", "Hello" }
+    p { lang: "es", "Hola" }
+}
+```
+
+**Reference:** [MDN](https://developer.mozilla.org/en-US/docs/Web/HTML/Global_attributes/lang)
+
+### dir
+
+The `dir` attribute specifies the text direction.
+
+```rust
+rsx! {
+    p { dir: "rtl", "Right to left text" }
+}
+```
+
+**Values:** `ltr` (left-to-right), `rtl` (right-to-left), `auto`
+
+**Reference:** [MDN](https://developer.mozilla.org/en-US/docs/Web/HTML/Global_attributes/dir)
+
+### hidden
+
+The `hidden` attribute indicates that the element is not yet, or is no longer, relevant.
+
+```rust
+rsx! {
+    div { hidden: true, "Hidden content" }
+}
+```
+
+**Reference:** [MDN](https://developer.mozilla.org/en-US/docs/Web/HTML/Global_attributes/hidden)
+
+### tabindex
+
+The `tabindex` attribute controls keyboard navigation order.
+
+```rust
+rsx! {
+    button { tabindex: 1, "First" }
+    button { tabindex: 2, "Second" }
+}
+```
+
+**Reference:** [MDN](https://developer.mozilla.org/en-US/docs/Web/HTML/Global_attributes/tabindex)
+
+### accesskey
+
+The `accesskey` attribute provides a keyboard shortcut.
+
+```rust
+rsx! {
+    button { accesskey: "s", "Save (Alt+S)" }
+}
+```
+
+**Reference:** [MDN](https://developer.mozilla.org/en-US/docs/Web/HTML/Global_attributes/accesskey)
+
+### contenteditable
+
+The `contenteditable` attribute indicates whether the element's content is editable.
+
+```rust
+rsx! {
+    div { contenteditable: "true", "Editable content" }
+}
+```
+
+**Reference:** [MDN](https://developer.mozilla.org/en-US/docs/Web/HTML/Global_attributes/contenteditable)
+
+### draggable
+
+The `draggable` attribute indicates whether the element can be dragged.
+
+```rust
+rsx! {
+    div { draggable: "true", "Drag me" }
+}
+```
+
+**Reference:** [MDN](https://developer.mozilla.org/en-US/docs/Web/HTML/Global_attributes/draggable)
+
+### spellcheck
+
+The `spellcheck` attribute indicates whether to enable spell checking.
+
+```rust
+rsx! {
+    textarea { spellcheck: true, "Type here" }
+}
+```
+
+**Reference:** [MDN](https://developer.mozilla.org/en-US/docs/Web/HTML/Global_attributes/spellcheck)
+
+### translate
+
+The `translate` attribute specifies whether content should be translated.
+
+```rust
+rsx! {
+    p { translate: "no", "Brand Name" }
+}
+```
+
+**Reference:** [MDN](https://developer.mozilla.org/en-US/docs/Web/HTML/Global_attributes/translate)
+
+## ARIA Attributes
+
+ARIA attributes improve accessibility. They all use the global attributes system.
+
+### role
+
+The `role` attribute defines the semantic role of an element.
+
+```rust
+rsx! {
+    div { role: "navigation", /* nav content */ }
+    button { role: "tab", "Tab 1" }
+}
+```
+
+**Reference:** [MDN](https://developer.mozilla.org/en-US/docs/Web/Accessibility/ARIA/Roles)
+
+## Data Attributes
+
+Custom data attributes store extra information.
+
+```rust
+rsx! {
+    div { "data-user-id": "123", "User info" }
+}
+```
+
+**Reference:** [MDN](https://developer.mozilla.org/en-US/docs/Learn/HTML/Howto/Use_data_attributes)
+
+## CSS Style Attributes
+
+Dioxus provides direct style attribute support in the "style" namespace:
+
+### Layout
+
+```rust
+rsx! {
+    div {
+        display: "flex",
+        flex_direction: "column",
+        justify_content: "center",
+        align_items: "center",
+        "Content"
+    }
+}
+```
+
+**Common Properties:** `display`, `position`, `top`, `left`, `right`, `bottom`, `width`, `height`, `min_width`, `max_width`, `min_height`, `max_height`
+
+### Flexbox
+
+```rust
+rsx! {
+    div {
+        display: "flex",
+        flex_direction: "row",
+        flex_wrap: "wrap",
+        flex_grow: "1",
+        flex_shrink: "0",
+        flex_basis: "auto",
+        "Flex item"
+    }
+}
+```
+
+**Properties:** `flex`, `flex_direction`, `flex_wrap`, `flex_grow`, `flex_shrink`, `flex_basis`, `justify_content`, `align_items`, `align_content`, `align_self`, `order`
+
+### Grid
+
+```rust
+rsx! {
+    div {
+        display: "grid",
+        grid_template_columns: "1fr 1fr 1fr",
+        grid_template_rows: "auto",
+        grid_gap: "10px",
+        "Grid container"
+    }
+}
+```
+
+**Properties:** `grid`, `grid_template_columns`, `grid_template_rows`, `grid_template_areas`, `grid_column`, `grid_row`, `grid_area`, `grid_gap`, `column_gap`, `row_gap`
+
+### Spacing
+
+```rust
+rsx! {
+    div {
+        margin: "10px",
+        margin_top: "20px",
+        padding: "15px",
+        padding_left: "25px",
+        "Content"
+    }
+}
+```
+
+**Properties:** `margin`, `margin_top`, `margin_right`, `margin_bottom`, `margin_left`, `padding`, `padding_top`, `padding_right`, `padding_bottom`, `padding_left`
+
+### Typography
+
+```rust
+rsx! {
+    p {
+        font_family: "Arial, sans-serif",
+        font_size: "16px",
+        font_weight: "bold",
+        line_height: "1.5",
+        text_align: "center",
+        color: "#333",
+        "Styled text"
+    }
+}
+```
+
+**Properties:** `font`, `font_family`, `font_size`, `font_weight`, `font_style`, `line_height`, `text_align`, `text_decoration`, `text_transform`, `letter_spacing`, `word_spacing`, `white_space`
+
+### Colors and Backgrounds
+
+```rust
+rsx! {
+    div {
+        color: "#ffffff",
+        background_color: "#007bff",
+        background_image: "url(/bg.jpg)",
+        background_size: "cover",
+        opacity: "0.9",
+        "Content"
+    }
+}
+```
+
+**Properties:** `color`, `background`, `background_color`, `background_image`, `background_position`, `background_size`, `background_repeat`, `background_attachment`, `opacity`
+
+### Borders
+
+```rust
+rsx! {
+    div {
+        border: "1px solid #ccc",
+        border_radius: "8px",
+        border_top: "2px solid red",
+        box_shadow: "0 2px 4px rgba(0,0,0,0.1)",
+        "Bordered content"
+    }
+}
+```
+
+**Properties:** `border`, `border_width`, `border_style`, `border_color`, `border_radius`, `border_top`, `border_right`, `border_bottom`, `border_left`, `box_shadow`
+
+### Transforms and Animations
+
+```rust
+rsx! {
+    div {
+        transform: "rotate(45deg) scale(1.2)",
+        transition: "all 0.3s ease",
+        animation: "slide 1s infinite",
+        "Animated content"
+    }
+}
+```
+
+**Properties:** `transform`, `transition`, `animation`, `animation_name`, `animation_duration`, `animation_timing_function`, `animation_delay`, `animation_iteration_count`
+
+### Positioning
+
+```rust
+rsx! {
+    div {
+        position: "absolute",
+        top: "10px",
+        left: "20px",
+        z_index: "100",
+        "Positioned content"
+    }
+}
+```
+
+**Properties:** `position`, `top`, `right`, `bottom`, `left`, `z_index`
+
+### Overflow
+
+```rust
+rsx! {
+    div {
+        overflow: "auto",
+        overflow_x: "hidden",
+        overflow_y: "scroll",
+        "Scrollable content"
+    }
+}
+```
+
+**Properties:** `overflow`, `overflow_x`, `overflow_y`
+
+## Form Attributes
+
+### Input Attributes
+
+```rust
+rsx! {
+    input {
+        r#type: "text",
+        name: "username",
+        value: "{value}",
+        placeholder: "Enter username",
+        required: true,
+        disabled: false,
+        readonly: false,
+        autofocus: true,
+        autocomplete: "username",
+        maxlength: 50,
+        minlength: 3,
+        pattern: "[A-Za-z0-9]+"
+    }
+}
+```
+
+**Attributes:** `type`, `name`, `value`, `placeholder`, `required`, `disabled`, `readonly`, `autofocus`, `autocomplete`, `maxlength`, `minlength`, `pattern`, `min`, `max`, `step`, `multiple`, `accept`
+
+### Button Attributes
+
+```rust
+rsx! {
+    button {
+        r#type: "submit",
+        name: "action",
+        value: "save",
+        disabled: false,
+        autofocus: true,
+        formaction: "/submit",
+        formmethod: "post",
+        "Submit"
+    }
+}
+```
+
+**Attributes:** `type`, `name`, `value`, `disabled`, `autofocus`, `form`, `formaction`, `formenctype`, `formmethod`, `formnovalidate`, `formtarget`
+
+### Select Attributes
+
+```rust
+rsx! {
+    select {
+        name: "choice",
+        required: true,
+        disabled: false,
+        multiple: false,
+        size: 1,
+        option { value: "1", "Option 1" }
+    }
+}
+```
+
+**Attributes:** `name`, `required`, `disabled`, `multiple`, `size`, `autofocus`, `form`
+
+### Textarea Attributes
+
+```rust
+rsx! {
+    textarea {
+        name: "message",
+        rows: 5,
+        cols: 40,
+        placeholder: "Enter message",
+        required: true,
+        disabled: false,
+        readonly: false,
+        maxlength: 500,
+        wrap: "soft"
+    }
+}
+```
+
+**Attributes:** `name`, `rows`, `cols`, `placeholder`, `required`, `disabled`, `readonly`, `maxlength`, `minlength`, `wrap`, `autocomplete`, `autofocus`, `form`, `spellcheck`
+
+## Link Attributes
+
+### Anchor (a) Attributes
+
+```rust
+rsx! {
+    a {
+        href: "https://example.com",
+        target: "_blank",
+        rel: "noopener noreferrer",
+        download: "file.pdf",
+        hreflang: "en",
+        r#type: "text/html",
+        "Link text"
+    }
+}
+```
+
+**Attributes:** `href`, `target`, `rel`, `download`, `hreflang`, `type`, `ping`
+
+**Target Values:** `_blank` (new tab), `_self` (same frame), `_parent` (parent frame), `_top` (full window)
+
+### Link Element Attributes
+
+```rust
+rsx! {
+    link {
+        rel: "stylesheet",
+        href: "/style.css",
+        r#type: "text/css",
+        media: "screen",
+        crossorigin: "anonymous",
+        integrity: "sha384-..."
+    }
+}
+```
+
+**Attributes:** `rel`, `href`, `type`, `media`, `crossorigin`, `integrity`, `hreflang`, `sizes`, `referrerpolicy`, `fetchpriority`, `as`
+
+## Media Attributes
+
+### Image Attributes
+
+```rust
+rsx! {
+    img {
+        src: "/image.jpg",
+        alt: "Description",
+        width: 300,
+        height: 200,
+        loading: "lazy",
+        decoding: "async",
+        crossorigin: "anonymous",
+        referrerpolicy: "no-referrer",
+        srcset: "/image-2x.jpg 2x",
+        sizes: "(max-width: 600px) 100vw, 50vw"
+    }
+}
+```
+
+**Attributes:** `src`, `alt`, `width`, `height`, `loading`, `decoding`, `crossorigin`, `ismap`, `usemap`, `srcset`, `sizes`, `referrerpolicy`, `fetchpriority`
+
+### Audio/Video Attributes
+
+```rust
+rsx! {
+    video {
+        src: "/video.mp4",
+        controls: true,
+        autoplay: false,
+        r#loop: false,
+        muted: false,
+        preload: "metadata",
+        poster: "/thumbnail.jpg",
+        width: 640,
+        height: 360,
+        crossorigin: "anonymous"
+    }
+}
+```
+
+**Attributes:** `src`, `controls`, `autoplay`, `loop`, `muted`, `preload`, `poster` (video only), `width`, `height`, `crossorigin`
+
+**Preload Values:** `none`, `metadata`, `auto`
+
+## Table Attributes
+
+```rust
+rsx! {
+    table {
+        thead {
+            tr {
+                th { scope: "col", colspan: 2, "Header" }
+            }
+        }
+        tbody {
+            tr {
+                td { rowspan: 2, "Cell" }
+            }
+        }
+    }
+}
+```
+
+**th Attributes:** `scope`, `colspan`, `rowspan`, `abbr`
+
+**td Attributes:** `colspan`, `rowspan`
+
+**Scope Values:** `row`, `col`, `rowgroup`, `colgroup`
+
+## Special Attributes
+
+### dangerous_inner_html
+
+Sets raw HTML content (use with caution - XSS risk).
+
+```rust
+rsx! {
+    div { dangerous_inner_html: "<strong>Bold</strong> text" }
+}
+```
+
+**Warning:** Only use with trusted content to avoid XSS attacks.
+
+## Attribute Naming
+
+In Dioxus, attribute names follow Rust naming conventions:
+
+- Hyphenated HTML attributes use underscores: `font-size` becomes `font_size`
+- Reserved Rust keywords are prefixed with `r#`: `type` becomes `r#type`, `loop` becomes `r#loop`
+- JavaScript-style names (camelCase) are converted: `className` is just `class`
+
+## Dynamic Attributes
+
+Attributes can be computed dynamically:
+
+```rust
+let class_name = if active { "active" } else { "inactive" };
+
+rsx! {
+    div { class: "{class_name}", "Content" }
+}
+```
+
+## Conditional Attributes
+
+Use unterminated if expressions:
+
+```rust
+rsx! {
+    button {
+        class: "btn",
+        disabled: if loading { "true" },
+        "Submit"
+    }
+}
+```
+
+## See Also
+
+- [HTML Elements](/api/html/elements) - Complete list of HTML elements
+- [Event Handlers](/api/html/events) - Event handling reference
+- [RSX Syntax](/guide/rsx) - Learn more about the RSX macro

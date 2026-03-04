@@ -1,0 +1,215 @@
+---
+title: Components
+description: Learn about components in Dioxus - the building blocks of your UI
+---
+
+Components are the fundamental building blocks of Dioxus applications. They are reusable, composable functions that return UI elements.
+
+## Component Basics
+
+A component is a function that returns an `Element`. The simplest component takes no arguments:
+
+```rust
+use dioxus::prelude::*;
+
+fn App() -> Element {
+    rsx! {
+        div { "Hello, world!" }
+    }
+}
+```
+
+### The Element Type
+
+The `Element` type is defined as:
+
+```rust
+type Element = std::result::Result<VNode, RenderError>;
+```
+
+It represents a possibly-none VNode created by calling render on a component. An errored Element will propagate the error to the nearest error boundary.
+
+## The #[component] Macro
+
+The `#[component]` macro is the recommended way to create components with props. It automatically generates a props struct and handles component registration.
+
+### Basic Usage
+
+```rust
+use dioxus::prelude::*;
+
+#[component]
+fn Greeting(name: String) -> Element {
+    rsx! {
+        div { "Hello, {name}!" }
+    }
+}
+```
+
+This is equivalent to manually defining:
+
+```rust
+#[derive(Props, PartialEq, Clone)]
+struct GreetingProps {
+    name: String,
+}
+
+fn Greeting(props: GreetingProps) -> Element {
+    rsx! {
+        div { "Hello, {props.name}!" }
+    }
+}
+```
+
+### Component Naming
+
+Components must use:
+- **PascalCase** (recommended): `MyComponent`, `UserProfile`
+- **snake_case with underscore**: `my_component`, `user_profile`
+
+You can disable the case check with `#[component(no_case_check)]` if needed.
+
+## Props and Parameters
+
+Components can accept parameters which become props:
+
+```rust
+#[component]
+fn UserCard(
+    name: String,
+    age: i32,
+    #[props(default = "user.png".to_string())]
+    avatar: String,
+) -> Element {
+    rsx! {
+        div {
+            img { src: "{avatar}" }
+            h2 { "{name}" }
+            p { "Age: {age}" }
+        }
+    }
+}
+```
+
+### Using Components
+
+Call components in `rsx!` like HTML elements:
+
+```rust
+rsx! {
+    UserCard {
+        name: "Alice",
+        age: 30,
+    }
+}
+```
+
+## Children
+
+Components can accept children by including a `children: Element` parameter:
+
+```rust
+#[component]
+fn Card(children: Element) -> Element {
+    rsx! {
+        div { class: "card",
+            {children}
+        }
+    }
+}
+
+// Usage
+rsx! {
+    Card {
+        h1 { "Title" }
+        p { "Content" }
+    }
+}
+```
+
+## Component Function Trait
+
+Components must implement the `ComponentFunction` trait. This is automatically done for:
+- Functions with signature `fn() -> Element`
+- Functions with signature `fn(Props) -> Element` where Props implements `Properties`
+- Functions marked with `#[component]`
+
+```rust
+pub trait ComponentFunction<Props, Marker = ()>: Clone + 'static {
+    fn rebuild(&self, props: Props) -> Element;
+}
+```
+
+## Component Lifecycle
+
+Components in Dioxus:
+1. **First render**: Component function is called with props
+2. **Re-render**: When props change or state updates, component re-runs
+3. **Cleanup**: When component is unmounted, hooks clean up automatically
+
+<Tip>
+Components are memoized by default - they only re-render when their props change (using `PartialEq`) or when subscribed signals/state update.
+</Tip>
+
+## Best Practices
+
+<CardGroup cols={2}>
+  <Card title="Keep Components Small" icon="cube">
+    Break down complex UIs into smaller, focused components for better reusability and testing.
+  </Card>
+  
+  <Card title="Use PascalCase" icon="font-case">
+    Follow Rust conventions and use PascalCase for component names to distinguish them from HTML elements.
+  </Card>
+  
+  <Card title="Props Should Be PartialEq" icon="equals">
+    Props must implement `PartialEq` for memoization - this prevents unnecessary re-renders.
+  </Card>
+  
+  <Card title="Return Element" icon="arrow-left">
+    Always return `Element` from components. Use `rsx!` macro to construct UI.
+  </Card>
+</CardGroup>
+
+## Example: Complete Component
+
+```rust
+use dioxus::prelude::*;
+
+#[component]
+fn TodoItem(
+    text: String,
+    completed: bool,
+    on_toggle: EventHandler<()>,
+) -> Element {
+    rsx! {
+        li {
+            class: if completed { "completed" } else { "" },
+            input {
+                r#type: "checkbox",
+                checked: completed,
+                onclick: move |_| on_toggle.call(()),
+            }
+            span { "{text}" }
+        }
+    }
+}
+
+fn App() -> Element {
+    let mut completed = use_signal(|| false);
+    
+    rsx! {
+        TodoItem {
+            text: "Learn Dioxus",
+            completed: completed(),
+            on_toggle: move |_| completed.toggle(),
+        }
+    }
+}
+```
+
+## See Also
+
+- [Props](/concepts/props) - Learn about passing data to components
+- [RSX](/concepts/rsx) - Understand the RSX macro syntax
+- [State](/concepts/state) - Manage component state

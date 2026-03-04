@@ -1,0 +1,361 @@
+---
+title: State Management
+description: Learn how to manage state in Dioxus applications
+---
+
+State management is fundamental to building interactive applications. Dioxus provides multiple approaches for managing state at different scopes.
+
+## State Overview
+
+Dioxus distinguishes between two types of state:
+
+- **Local State**: State owned by a single component
+- **Global State**: State shared across multiple components
+
+Both use the same reactive primitives under the hood - mainly **Signals**.
+
+## Local State
+
+Local state is created within a component and is owned by that component. When the component unmounts, its state is dropped.
+
+### Using use_signal
+
+The primary way to create local state:
+
+```rust
+use dioxus::prelude::*;
+
+#[component]
+fn Counter() -> Element {
+    let mut count = use_signal(|| 0);
+    
+    rsx! {
+        div {
+            p { "Count: {count}" }
+            button {
+                onclick: move |_| count += 1,
+                "Increment"
+            }
+        }
+    }
+}
+```
+
+### State Lifecycle
+
+1. **Creation**: State is created on first component render
+2. **Updates**: Modifying state triggers re-renders of subscribed components
+3. **Cleanup**: State is automatically dropped when component unmounts
+
+```rust
+fn App() -> Element {
+    let mut show = use_signal(|| true);
+    
+    rsx! {
+        button {
+            onclick: move |_| show.toggle(),
+            "Toggle"
+        }
+        
+        if show() {
+            // Counter's state is created when mounted
+            // and dropped when show becomes false
+            Counter {}
+        }
+    }
+}
+```
+
+## Sharing State
+
+### Passing State as Props
+
+Pass signals directly to child components:
+
+```rust
+#[component]
+fn Parent() -> Element {
+    let mut count = use_signal(|| 0);
+    
+    rsx! {
+        // Pass the signal itself
+        Display { count }
+        Controls { count }
+    }
+}
+
+#[component]
+fn Display(count: Signal<i32>) -> Element {
+    rsx! { p { "Count: {count}" } }
+}
+
+#[component]
+fn Controls(mut count: Signal<i32>) -> Element {
+    rsx! {
+        button { onclick: move |_| count += 1, "+" }
+        button { onclick: move |_| count -= 1, "-" }
+    }
+}
+```
+
+### Using Context
+
+Share state with descendants without prop drilling:
+
+```rust
+#[component]
+fn App() -> Element {
+    // Provide state to the context
+    use_context_provider(|| Signal::new(0));
+    
+    rsx! {
+        DeepChild {}
+    }
+}
+
+#[component]
+fn DeepChild() -> Element {
+    // Consume state from context
+    let mut count: Signal<i32> = use_context();
+    
+    rsx! {
+        button {
+            onclick: move |_| count += 1,
+            "Count: {count}"
+        }
+    }
+}
+```
+
+## Global State
+
+Global state lives for the entire application lifetime and can be accessed from anywhere.
+
+### Global Signals
+
+```rust
+use dioxus::prelude::*;
+
+// Define a global signal
+static COUNT: GlobalSignal<i32> = Signal::global(|| 0);
+
+#[component]
+fn ComponentA() -> Element {
+    rsx! {
+        button {
+            onclick: move |_| *COUNT.write() += 1,
+            "Increment"
+        }
+    }
+}
+
+#[component]
+fn ComponentB() -> Element {
+    rsx! {
+        // Both components react to the same global state
+        p { "Count: {COUNT}" }
+    }
+}
+```
+
+<Warning>
+Global signals are convenient but can make it harder to reuse components. Use them judiciously and prefer local state or context when possible.
+</Warning>
+
+## State Patterns
+
+### Derived State with use_memo
+
+Compute derived values that update when dependencies change:
+
+```rust
+fn App() -> Element {
+    let mut count = use_signal(|| 0);
+    let doubled = use_memo(move || count() * 2);
+    
+    rsx! {
+        p { "Count: {count}" }
+        p { "Doubled: {doubled}" }
+        button {
+            onclick: move |_| count += 1,
+            "Increment"
+        }
+    }
+}
+```
+
+### Side Effects with use_effect
+
+Run side effects when state changes:
+
+```rust
+fn App() -> Element {
+    let mut count = use_signal(|| 0);
+    
+    // Effect runs on mount and whenever count changes
+    use_effect(move || {
+        println!("Count changed to: {}", count());
+    });
+    
+    rsx! {
+        button {
+            onclick: move |_| count += 1,
+            "Count: {count}"
+        }
+    }
+}
+```
+
+### Reducers
+
+Manage complex state with actions:
+
+```rust
+enum Action {
+    Increment,
+    Decrement,
+    Reset,
+}
+
+fn reducer(state: &mut i32, action: Action) {
+    match action {
+        Action::Increment => *state += 1,
+        Action::Decrement => *state -= 1,
+        Action::Reset => *state = 0,
+    }
+}
+
+fn App() -> Element {
+    let mut count = use_signal(|| 0);
+    
+    let dispatch = move |action| {
+        count.with_mut(|state| reducer(state, action));
+    };
+    
+    rsx! {
+        p { "Count: {count}" }
+        button { onclick: move |_| dispatch(Action::Increment), "+" }
+        button { onclick: move |_| dispatch(Action::Decrement), "-" }
+        button { onclick: move |_| dispatch(Action::Reset), "Reset" }
+    }
+}
+```
+
+## Complex State
+
+### Collections
+
+Managing lists and maps:
+
+```rust
+fn TodoList() -> Element {
+    let mut todos = use_signal(|| vec![
+        "Learn Dioxus".to_string(),
+        "Build an app".to_string(),
+    ]);
+    let mut input = use_signal(|| String::new());
+    
+    rsx! {
+        input {
+            value: "{input}",
+            oninput: move |e| input.set(e.value()),
+        }
+        button {
+            onclick: move |_| {
+                todos.push(input());
+                input.set(String::new());
+            },
+            "Add"
+        }
+        
+        ul {
+            for (i, todo) in todos.read().iter().enumerate() {
+                li {
+                    key: "{i}",
+                    "{todo}"
+                    button {
+                        onclick: move |_| { todos.remove(i); },
+                        "Delete"
+                    }
+                }
+            }
+        }
+    }
+}
+```
+
+### Nested State
+
+Use structs for organized state:
+
+```rust
+#[derive(Clone, PartialEq)]
+struct User {
+    name: String,
+    email: String,
+    age: u32,
+}
+
+fn UserProfile() -> Element {
+    let mut user = use_signal(|| User {
+        name: "Alice".to_string(),
+        email: "alice@example.com".to_string(),
+        age: 30,
+    });
+    
+    rsx! {
+        input {
+            value: "{user.read().name}",
+            oninput: move |e| {
+                user.write().name = e.value();
+            },
+        }
+        
+        button {
+            onclick: move |_| {
+                user.write().age += 1;
+            },
+            "Birthday (+{user.read().age})"
+        }
+    }
+}
+```
+
+## State Best Practices
+
+<CardGroup cols={2}>
+  <Card title="Start Local" icon="house">
+    Begin with local state and lift it up only when needed. Don't prematurely optimize with global state.
+  </Card>
+  
+  <Card title="Use Memos for Computation" icon="calculator">
+    Derive expensive computations with `use_memo` to avoid recalculating on every render.
+  </Card>
+  
+  <Card title="Keep State Minimal" icon="minimize">
+    Only store what can't be computed from existing state. Derive everything else.
+  </Card>
+  
+  <Card title="Signals are Copy" icon="copy">
+    Signals are cheap to clone and pass around. Don't be afraid to pass them as props.
+  </Card>
+</CardGroup>
+
+## Comparison with React
+
+If you're coming from React:
+
+| React | Dioxus |
+|-------|--------|
+| `useState` | `use_signal` |
+| `useMemo` | `use_memo` |
+| `useEffect` | `use_effect` |
+| `useReducer` | Custom reducer pattern with signals |
+| `useContext` | `use_context` with `use_context_provider` |
+| Redux/Zustand | Global signals with `Signal::global` |
+
+## See Also
+
+- [Signals](/concepts/signals) - Deep dive into reactive primitives
+- [Hooks](/concepts/hooks) - Built-in hooks for state management
+- [Context API](/guides/context) - Share state without prop drilling

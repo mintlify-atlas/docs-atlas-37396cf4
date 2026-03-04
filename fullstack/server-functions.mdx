@@ -1,0 +1,537 @@
+---
+title: Server Functions
+description: Call server-side code from the client with automatic serialization and type safety
+---
+
+Server functions enable you to call server-side Rust code from your client components as if they were local async functions. Dioxus handles serialization, networking, and error handling automatically.
+
+## Basic Usage
+
+Define a server function using the `#[get]` or `#[post]` attributes:
+
+```rust
+use dioxus::prelude::*;
+
+#[get("/api/greeting/{name}/{age}")]
+async fn get_greeting(name: String, age: i32) -> Result<String> {
+    Ok(format!("Hello, {}! You are {} years old.", name, age))
+}
+```
+
+Call it from your component:
+
+```rust
+fn app() -> Element {
+    let mut greeting = use_action(get_greeting);
+
+    rsx! {
+        button { 
+            onclick: move |_| greeting.call("Alice".into(), 30),
+            "Get Greeting" 
+        }
+        p { "{greeting.value():?}" }
+    }
+}
+```
+
+## The `#[server]` Macro
+
+Server functions are marked with one of these attributes:
+
+### HTTP Method Attributes (Recommended)
+
+```rust
+#[get("/api/users/{id}")]           // GET request
+#[post("/api/users")]                // POST request  
+#[put("/api/users/{id}")]           // PUT request
+#[delete("/api/users/{id}")]        // DELETE request
+#[patch("/api/users/{id}")]         // PATCH request
+```
+
+### Anonymous Server Functions
+
+The `#[server]` attribute creates an endpoint with an auto-generated path:
+
+```rust
+#[server]
+async fn my_function() -> Result<String> {
+    Ok("Hello".to_string())
+}
+// Creates endpoint at /api/my_function_<hash>
+```
+
+<Warning>
+  Avoid anonymous server functions in desktop/mobile apps that call a remote server, as the function names may change between builds.
+</Warning>
+
+## Path Parameters
+
+Extract values from the URL path:
+
+```rust
+#[get("/api/users/{user_id}/posts/{post_id}")]
+async fn get_post(user_id: u32, post_id: u32) -> Result<Post> {
+    // user_id and post_id extracted from path
+    todo!()
+}
+```
+
+Call with positional arguments:
+
+```rust
+let mut post = use_action(|| get_post(123, 456));
+```
+
+## Query Parameters
+
+Extract optional query parameters using `?` syntax:
+
+```rust
+#[get("/api/users?page&limit")]
+async fn list_users(page: Option<u32>, limit: Option<u32>) -> Result<Vec<User>> {
+    let page = page.unwrap_or(1);
+    let limit = limit.unwrap_or(10);
+    todo!()
+}
+```
+
+Call with named parameters:
+
+```rust
+let mut users = use_action(|| list_users(Some(2), Some(20)));
+```
+
+## Request Bodies
+
+For `POST`, `PUT`, and `PATCH`, pass serializable data as the request body:
+
+```rust
+#[derive(Serialize, Deserialize)]
+struct CreateUser {
+    name: String,
+    email: String,
+}
+
+#[post("/api/users")]
+async fn create_user(user: CreateUser) -> Result<User> {
+    // user deserialized from JSON body
+    todo!()
+}
+```
+
+Call with your data:
+
+```rust
+let mut result = use_action(move || {
+    create_user(CreateUser {
+        name: "Alice".into(),
+        email: "alice@example.com".into(),
+    })
+});
+```
+
+## Server-Only Extractors
+
+Extract server-side data without requiring the client to send it. Place extractors after the path in the attribute:
+
+```rust
+#[post("/api/users", headers: HeaderMap)]
+async fn create_user_with_auth(user: CreateUser) -> Result<User> {
+    // headers extracted on server, not sent from client
+    let auth = headers.get("authorization");
+    todo!()
+}
+```
+
+Common extractors:
+
+```rust
+// Headers
+#[get("/api/data", headers: HeaderMap)]
+
+// Cookies  
+#[get("/api/data", cookies: CookieJar)]
+
+// Custom extractors
+#[get("/api/data", auth: AuthExtractor)]
+
+// State (see State Management section)
+#[get("/api/data", state: State<AppState>)]
+```
+
+The client calls the function normally:
+
+```rust
+// Client doesn't pass headers
+let mut result = use_action(move || create_user_with_auth(user_data));
+```
+
+## Return Types
+
+Server functions must return `Result<T>` where `T` can be:
+
+### Serializable Types
+
+Any type implementing `Serialize + Deserialize`:
+
+```rust
+#[derive(Serialize, Deserialize)]
+struct User {
+    id: u32,
+    name: String,
+}
+
+#[get("/api/user/{id}")]
+async fn get_user(id: u32) -> Result<User> {
+    Ok(User { id, name: "Alice".into() })
+}
+```
+
+### Axum Response Types
+
+Any type implementing `IntoResponse`:
+
+```rust
+#[get("/api/redirect")]
+async fn redirect_home() -> Result<axum::response::Redirect> {
+    Ok(axum::response::Redirect::to("/home"))
+}
+
+#[get("/api/custom")]
+async fn custom_response() -> Result<axum::response::Response> {
+    Ok(axum::response::Response::builder()
+        .status(StatusCode::CREATED)
+        .body("Created!".to_string())
+        .unwrap()
+        .into_response())
+}
+```
+
+### Custom Response Types
+
+Implement `IntoResponse` and `FromResponse`:
+
+```rust
+struct CustomData {
+    message: String,
+}
+
+impl IntoResponse for CustomData {
+    fn into_response(self) -> axum::response::Response {
+        axum::response::Response::builder()
+            .status(StatusCode::OK)
+            .body(serde_json::to_string(&self.message).unwrap().into())
+            .unwrap()
+    }
+}
+
+impl FromResponse for CustomData {
+    async fn from_response(res: ClientResponse) -> Result<Self, ServerFnError> {
+        let message = res.json::<String>().await?;
+        Ok(CustomData { message })
+    }
+}
+
+#[get("/api/custom")]
+async fn get_custom() -> Result<CustomData> {
+    Ok(CustomData { message: "Hello".into() })
+}
+```
+
+## Error Handling
+
+Server functions support several error types:
+
+### Untyped Errors (anyhow)
+
+Use `Result<T>` (alias for `Result<T, anyhow::Error>`) for quick development:
+
+```rust
+#[get("/api/data")]
+async fn get_data() -> Result<String> {
+    let response = reqwest::get("https://api.example.com/data").await?;
+    Ok(response.text().await?)
+}
+```
+
+Errors automatically convert to HTTP 500 responses.
+
+### Status Code Errors
+
+Return specific HTTP status codes:
+
+```rust
+#[get("/api/user/{id}")]
+async fn get_user(id: u32) -> Result<User, StatusCode> {
+    find_user(id).ok_or(StatusCode::NOT_FOUND)
+}
+```
+
+### HTTP Errors
+
+Use `HttpError` for status codes with messages:
+
+```rust
+#[get("/api/user/{id}")]
+async fn get_user(id: u32) -> Result<User> {
+    let user = find_user(id)
+        .or_not_found("User not found")?;
+    Ok(user)
+}
+```
+
+Helpers available:
+- `HttpError::bad_request(msg)` - 400
+- `HttpError::unauthorized(msg)` - 401
+- `HttpError::forbidden(msg)` - 403
+- `HttpError::not_found(msg)` - 404
+- `HttpError::internal_server_error(msg)` - 500
+
+### Typed Errors
+
+Define custom error types for structured error handling:
+
+```rust
+#[derive(thiserror::Error, Debug, Serialize, Deserialize)]
+enum UserError {
+    #[error("user not found")]
+    NotFound,
+    
+    #[error("invalid email: {0}")]
+    InvalidEmail(String),
+    
+    #[error("server error")]
+    ServerError(#[from] ServerFnError),
+}
+
+impl AsStatusCode for UserError {
+    fn as_status_code(&self) -> StatusCode {
+        match self {
+            UserError::NotFound => StatusCode::NOT_FOUND,
+            UserError::InvalidEmail(_) => StatusCode::BAD_REQUEST,
+            UserError::ServerError(e) => e.as_status_code(),
+        }
+    }
+}
+
+#[post("/api/users")]
+async fn create_user(user: CreateUser) -> Result<User, UserError> {
+    if !is_valid_email(&user.email) {
+        return Err(UserError::InvalidEmail(user.email));
+    }
+    Ok(save_user(user).await?)
+}
+```
+
+Handle typed errors on the client:
+
+```rust
+let mut result = use_action(create_user);
+
+rsx! {
+    match result.value() {
+        Some(Ok(user)) => rsx! { "User created: {user.name}" },
+        Some(Err(UserError::InvalidEmail(email))) => rsx! {
+            "Invalid email: {email}"
+        },
+        Some(Err(UserError::NotFound)) => rsx! { "User not found" },
+        Some(Err(_)) => rsx! { "Server error" },
+        None => rsx! { "Loading..." },
+    }
+}
+```
+
+## State Management
+
+Access global server state using Axum's `State` extractor:
+
+```rust
+#[derive(Clone)]
+struct AppState {
+    db: DatabasePool,
+}
+
+impl FromRef<FullstackContext> for AppState {
+    fn from_ref(state: &FullstackContext) -> Self {
+        state.extension::<AppState>().unwrap()
+    }
+}
+
+#[get("/api/users", state: State<AppState>)]
+async fn list_users() -> Result<Vec<User>> {
+    let users = state.db.query("SELECT * FROM users").await?;
+    Ok(users)
+}
+```
+
+Initialize state when creating the server:
+
+```rust
+#[cfg(feature = "server")]
+fn main() {
+    dioxus::serve(|| async move {
+        let app_state = AppState { 
+            db: DatabasePool::connect("...").await? 
+        };
+        
+        Ok(dioxus::server::router(app)
+            .layer(Extension(app_state)))
+    });
+}
+```
+
+## Calling Server Functions
+
+### With `use_action`
+
+The `use_action` hook provides loading state and error handling:
+
+```rust
+let mut action = use_action(my_server_fn);
+
+// Call the function
+action.call(arg1, arg2);
+
+// Check status
+if action.pending() {
+    // Still loading
+}
+
+// Get result
+match action.value() {
+    Some(Ok(data)) => { /* success */ },
+    Some(Err(e)) => { /* error */ },
+    None => { /* not called yet */ },
+}
+
+// Cancel in-flight request
+action.cancel();
+
+// Reset state
+action.reset();
+```
+
+### Directly as Async Functions
+
+Call server functions directly in async contexts:
+
+```rust
+let mut result = use_signal(|| None);
+
+use_effect(move || {
+    spawn(async move {
+        match my_server_fn("arg".into()).await {
+            Ok(data) => result.set(Some(data)),
+            Err(e) => log::error!("Error: {e}"),
+        }
+    });
+});
+```
+
+## Advanced Patterns
+
+### Combining Multiple Extractors
+
+```rust
+#[post("/api/posts", headers: HeaderMap, state: State<AppState>, cookies: CookieJar)]
+async fn create_post(post: CreatePost) -> Result<Post> {
+    // All extractors available
+    let auth = headers.get("authorization");
+    let user_id = cookies.get("user_id");
+    let db = &state.db;
+    todo!()
+}
+```
+
+### Middleware
+
+Apply middleware to specific endpoints:
+
+```rust
+#[get("/api/data")]
+#[middleware(TimeoutLayer::new(Duration::from_secs(30)))]
+#[middleware(RateLimitLayer::new())]
+async fn get_data() -> Result<String> {
+    todo!()
+}
+```
+
+See [Middleware](/fullstack/middleware) for more details.
+
+### Streaming Responses
+
+Return streams of data:
+
+```rust
+#[get("/api/logs")]
+async fn stream_logs() -> Result<Streaming<String, JsonEncoding>> {
+    let (tx, rx) = futures::channel::mpsc::unbounded();
+    
+    tokio::spawn(async move {
+        // Send log lines
+        tx.unbounded_send("Log line 1".into()).ok();
+    });
+    
+    Ok(Streaming::new(rx))
+}
+```
+
+### Websockets
+
+Server functions can upgrade to WebSocket connections:
+
+```rust
+#[get("/api/chat")]
+async fn chat(ws: Websocket) -> Result<Websocket> {
+    Ok(ws) // Connection upgraded to WebSocket
+}
+```
+
+See examples in `examples/07-fullstack/websocket.rs`.
+
+## Best Practices
+
+1. **Use explicit paths** for production APIs that need stability
+2. **Return typed errors** for better client-side error handling  
+3. **Keep server functions focused** - one responsibility per function
+4. **Use server-only extractors** for sensitive data like cookies and auth
+5. **Validate input** - never trust client data
+6. **Handle errors gracefully** - return meaningful error messages
+7. **Use appropriate HTTP methods** - GET for reads, POST for writes
+
+## Security Considerations
+
+<Warning>
+  Always validate and sanitize client input. Server functions are public HTTP endpoints.
+</Warning>
+
+```rust
+#[post("/api/users")]
+async fn create_user(user: CreateUser, auth: AuthExtractor) -> Result<User> {
+    // Validate authentication
+    if !auth.is_authenticated() {
+        return Err(HttpError::unauthorized("Not authenticated"));
+    }
+    
+    // Validate input
+    if user.name.is_empty() || user.name.len() > 100 {
+        return Err(HttpError::bad_request("Invalid name"));
+    }
+    
+    // Check permissions
+    if !auth.has_permission("create_user") {
+        return Err(HttpError::forbidden("No permission"));
+    }
+    
+    Ok(save_user(user).await?)
+}
+```
+
+## Examples
+
+See the fullstack examples:
+
+- `examples/07-fullstack/server_functions.rs` - Comprehensive examples
+- `examples/07-fullstack/handling_errors.rs` - Error handling patterns
+- `examples/07-fullstack/server_state.rs` - State management
+- `examples/07-fullstack/streaming.rs` - Streaming responses

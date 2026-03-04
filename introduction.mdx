@@ -1,0 +1,255 @@
+---
+title: Introduction to Dioxus
+description: Learn about Dioxus, a modern cross-platform UI framework for Rust that enables you to build web, desktop, and mobile apps with a single codebase.
+---
+
+# Introduction to Dioxus
+
+Dioxus is a cross-platform UI framework for Rust that enables you to build beautiful, fast, and type-safe applications with a single codebase. Whether you're targeting web browsers, desktop platforms, mobile devices, or even native GPU-rendered interfaces, Dioxus provides a unified development experience.
+
+## What is Dioxus?
+
+Dioxus is a framework for building user interfaces in Rust, inspired by React but designed to leverage Rust's unique strengths. It uses a declarative, component-based approach where you describe your UI as functions that return `Element`s, and Dioxus efficiently handles updating the actual interface when your state changes.
+
+```rust
+use dioxus::prelude::*;
+
+fn app() -> Element {
+    let mut count = use_signal(|| 0);
+
+    rsx! {
+        h1 { "High-Five counter: {count}" }
+        button { onclick: move |_| count += 1, "Up high!" }
+        button { onclick: move |_| count -= 1, "Down low!" }
+    }
+}
+```
+
+## Key Features
+
+Dioxus offers a unique combination of features that make it stand out in the UI framework landscape:
+
+<CardGroup cols={2}>
+  <Card title="Cross-Platform" icon="mobile-screen-button">
+    Write once, deploy everywhere. Build for web, desktop (Windows, macOS, Linux), mobile (iOS, Android), and more from a single codebase.
+  </Card>
+  
+  <Card title="Instant Hot-Reload" icon="bolt">
+    See your changes in milliseconds with RSX hot-reloading for markup and styles. Experimental hot-patching for Rust code updates in real-time.
+  </Card>
+  
+  <Card title="Ergonomic State Management" icon="database">
+    Signals-based reactivity combines the best of React, Solid, and Svelte. Simple, performant, and type-safe.
+  </Card>
+  
+  <Card title="Full-Stack Ready" icon="server">
+    Built-in integration with Axum for server functions, SSR, hydration, WebSockets, and more. No separate backend needed.
+  </Card>
+  
+  <Card title="Zero-Config Setup" icon="rocket">
+    Start building immediately with `dx serve`. Integrated bundler handles optimization, compression, and asset processing.
+  </Card>
+  
+  <Card title="Type-Safe Everything" icon="shield-check">
+    Leverage Rust's type system for compile-time guarantees. Catch errors before runtime with type-safe routing, props, and server functions.
+  </Card>
+</CardGroup>
+
+## How Dioxus Works
+
+### Component-Based Architecture
+
+Dioxus applications are built by composing functions that return UI elements. Each component can:
+
+- Accept **props** for configuration
+- Maintain internal **state** using signals
+- Respond to **events** like clicks or input changes
+- Render **child components** to build complex UIs
+
+```rust
+#[component]
+fn Header(title: String, color: String) -> Element {
+    rsx! {
+        div {
+            background_color: "{color}",
+            h1 { "{title}" }
+        }
+    }
+}
+```
+
+### RSX: Rust Syntax Extension
+
+Dioxus uses the `rsx!` macro to provide a JSX-like syntax for declaring UI. It's type-safe, ergonomic, and compiles directly to Rust code:
+
+```rust
+rsx! {
+    div { class: "container",
+        h1 { "Welcome to Dioxus" }
+        for i in 0..5 {
+            p { "Item {i}" }
+        }
+    }
+}
+```
+
+### Reactive State with Signals
+
+Signals provide fine-grained reactivity. When a signal changes, only the components that depend on it re-render:
+
+```rust
+let mut count = use_signal(|| 0);
+let doubled = use_memo(move || count() * 2);
+
+use_effect(move || {
+    println!("Count changed to {count}");
+});
+```
+
+## Supported Platforms
+
+<Tabs>
+  <Tab title="Web">
+    - Render directly to the DOM using WebAssembly
+    - Pre-render with SSR and rehydrate on the client
+    - Simple "hello world" at about 50kb, comparable to React
+    - Built-in dev server and hot reloading for quick iteration
+  </Tab>
+  
+  <Tab title="Desktop">
+    - Render using Webview or experimentally with WGPU
+    - Zero-config setup: simply `cargo run` or `dx serve` to build your app
+    - Full support for native system access without IPC
+    - Supports macOS, Linux, and Windows with portable ~3mb binaries
+  </Tab>
+  
+  <Tab title="Mobile">
+    - Render using Webview or experimentally with WGPU
+    - Build .ipa and .apk files for iOS and Android
+    - Call directly into Java and Objective-C with minimal overhead
+    - From "hello world" to running on device in seconds
+  </Tab>
+  
+  <Tab title="Server">
+    - Suspense, hydration, and server-side rendering
+    - Quickly drop in backend functionality with server functions
+    - Extractors, middleware, and routing integrations
+    - Static-site generation and incremental regeneration
+  </Tab>
+</Tabs>
+
+## Comparison to Other Frameworks
+
+### Dioxus vs React
+
+<AccordionGroup>
+  <Accordion title="Similarities">
+    - Component-based architecture with props and state
+    - Hooks for managing state and side effects
+    - Virtual DOM for efficient updates
+    - JSX-like syntax (RSX in Dioxus)
+  </Accordion>
+  
+  <Accordion title="Differences">
+    - **Language**: Dioxus uses Rust instead of JavaScript/TypeScript
+    - **Type Safety**: Compile-time guarantees vs runtime checks
+    - **Performance**: Native compilation and fine-grained reactivity
+    - **Cross-Platform**: Single codebase for web, desktop, and mobile
+    - **Bundle Size**: Smaller WASM bundles (~50kb for hello world)
+  </Accordion>
+</AccordionGroup>
+
+### Dioxus vs Tauri
+
+<AccordionGroup>
+  <Accordion title="Similarities">
+    - Both enable desktop apps with Rust
+    - Both use webview for rendering (by default)
+    - Both offer native system access
+  </Accordion>
+  
+  <Accordion title="Differences">
+    - **UI Framework**: Dioxus provides the full UI framework; Tauri requires separate web framework
+    - **Web Support**: Dioxus apps run natively on the web; Tauri is desktop-focused
+    - **Mobile**: Dioxus includes first-class mobile support
+    - **Server Functions**: Built-in fullstack capabilities in Dioxus
+  </Accordion>
+</AccordionGroup>
+
+### Dioxus vs Leptos
+
+<AccordionGroup>
+  <Accordion title="Similarities">
+    - Both are Rust frameworks for web and more
+    - Both use signals for reactive state management
+    - Both offer SSR and hydration
+    - Both compile to WebAssembly
+  </Accordion>
+  
+  <Accordion title="Differences">
+    - **Mobile & Desktop**: Dioxus has more mature desktop/mobile support
+    - **Developer Experience**: Dioxus CLI provides integrated tooling
+    - **Hot Reload**: Dioxus offers subsecond hot-reload and experimental hot-patching
+    - **Community**: Different ecosystems and component libraries
+  </Accordion>
+</AccordionGroup>
+
+## Who Should Use Dioxus?
+
+Dioxus is perfect for:
+
+<Steps>
+  <Step title="Rust Developers">
+    If you're already familiar with Rust and want to build UIs without leaving the ecosystem
+  </Step>
+  
+  <Step title="Cross-Platform Teams">
+    Teams that need to target multiple platforms (web, desktop, mobile) with a single codebase
+  </Step>
+  
+  <Step title="Performance-Critical Apps">
+    Applications where bundle size, startup time, and runtime performance matter
+  </Step>
+  
+  <Step title="Type Safety Enthusiasts">
+    Developers who value compile-time guarantees and want to catch bugs early
+  </Step>
+</Steps>
+
+## Philosophy and Design Goals
+
+Dioxus is built around several core principles:
+
+<Note>
+**Developer Experience First**: Hot-reload, helpful error messages, comprehensive documentation, and intuitive APIs make development productive and enjoyable.
+</Note>
+
+<Note>
+**Performance Without Compromise**: Fine-grained reactivity, efficient diffing, and native compilation deliver fast apps without manual optimization.
+</Note>
+
+<Note>
+**Batteries Included**: Routing, state management, server functions, asset handling, and bundling come built-in. No decision fatigue.
+</Note>
+
+<Note>
+**Progressive Enhancement**: Start simple with client-side rendering, add SSR when needed, integrate server functions incrementally.
+</Note>
+
+## Next Steps
+
+Ready to start building with Dioxus? Here's what to do next:
+
+<CardGroup cols={2}>
+  <Card title="Installation" icon="download" href="/installation">
+    Set up Rust, install the Dioxus CLI, and configure your development environment
+  </Card>
+  
+  <Card title="Quick Start" icon="rocket" href="/quickstart">
+    Build your first Dioxus app in minutes with our step-by-step tutorial
+  </Card>
+</CardGroup>
+
+<Tip>
+Join the [Dioxus Discord community](https://discord.gg/XgGxMSkvUM) to get help, share your projects, and connect with other developers!
+</Tip>

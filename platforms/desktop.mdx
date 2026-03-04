@@ -1,0 +1,473 @@
+---
+title: Desktop Platform
+description: Build native desktop applications for Windows, macOS, and Linux
+---
+
+The Dioxus desktop renderer uses Wry (WebView) and Tao (windowing) to create native desktop applications. Your app runs with native performance while rendering HTML/CSS through the platform's native webview.
+
+## Quick Start
+
+Add the desktop dependency:
+
+```toml
+[dependencies]
+dioxus = { version = "0.6", features = ["desktop"] }
+```
+
+Create a simple desktop app:
+
+```rust
+use dioxus::prelude::*;
+
+fn main() {
+    dioxus::launch(App);
+}
+
+#[component]
+fn App() -> Element {
+    let mut count = use_signal(|| 0);
+    
+    rsx! {
+        h1 { "Desktop App" }
+        button { onclick: move |_| count += 1, "Count: {count}" }
+    }
+}
+```
+
+Run your app:
+
+```bash
+dx serve --platform desktop
+```
+
+Or build a release:
+
+```bash
+dx build --platform desktop --release
+```
+
+## Architecture
+
+### Wry and Tao
+
+Dioxus Desktop is built on:
+- **Wry**: Cross-platform WebView library
+- **Tao**: Cross-platform window creation and management
+- **Native WebView**: Uses the system's browser engine
+  - Windows: WebView2 (Chromium)
+  - macOS: WKWebView (Safari)
+  - Linux: WebKitGTK
+
+### IPC Communication
+
+Desktop apps use Inter-Process Communication (IPC) to bridge Rust and the webview:
+
+```
+Browser Event → JavaScript → window.postMessage()
+    → Wry intercepts request
+    → Extract dioxus-data header (base64 JSON)
+    → IpcMessage { method, params }
+    → Handle: UserEvent, Query, BrowserOpen, Initialize
+```
+
+## Configuration
+
+Customize your desktop app with `Config`:
+
+```rust
+use dioxus::prelude::*;
+use dioxus_desktop::{Config, WindowBuilder, LogicalSize};
+
+fn main() {
+    dioxus::LaunchBuilder::new()
+        .with_cfg(
+            Config::new()
+                .with_window(
+                    WindowBuilder::new()
+                        .with_title("My App")
+                        .with_inner_size(LogicalSize::new(800.0, 600.0))
+                        .with_resizable(true)
+                )
+        )
+        .launch(App);
+}
+```
+
+### Window Configuration
+
+```rust
+use dioxus_desktop::{Config, WindowBuilder, tao::dpi::LogicalSize};
+
+Config::new()
+    .with_window(
+        WindowBuilder::new()
+            .with_title("My Application")
+            .with_inner_size(LogicalSize::new(1200.0, 800.0))
+            .with_min_inner_size(LogicalSize::new(400.0, 300.0))
+            .with_resizable(true)
+            .with_maximized(false)
+            .with_decorations(true)
+            .with_transparent(false)
+            .with_always_on_top(false)
+    )
+```
+
+### Application Icon
+
+```rust
+use dioxus_desktop::{Config, tao::window::Icon};
+
+let icon_bytes = include_bytes!("../assets/icon.png");
+let icon = Icon::from_rgba(
+    icon_bytes.to_vec(),
+    256, // width
+    256  // height
+).unwrap();
+
+Config::new().with_icon(icon)
+```
+
+### Background Color
+
+Set the window background to prevent flashing:
+
+```rust
+Config::new()
+    .with_background_color((255, 255, 255, 255)) // RGBA
+```
+
+## Window Management
+
+Access the window through the `use_window` hook:
+
+```rust
+use dioxus::prelude::*;
+use dioxus_desktop::{use_window, LogicalSize};
+
+#[component]
+fn WindowControls() -> Element {
+    let window = use_window();
+    
+    rsx! {
+        button {
+            onclick: move |_| {
+                window.set_title("New Title");
+            },
+            "Change Title"
+        }
+        button {
+            onclick: move |_| {
+                window.set_inner_size(LogicalSize::new(1024.0, 768.0));
+            },
+            "Resize Window"
+        }
+        button {
+            onclick: move |_| {
+                window.set_minimized(true);
+            },
+            "Minimize"
+        }
+        button {
+            onclick: move |_| {
+                window.set_fullscreen(true);
+            },
+            "Fullscreen"
+        }
+    }
+}
+```
+
+### Multiple Windows
+
+Create additional windows dynamically:
+
+```rust
+use dioxus::prelude::*;
+use dioxus_desktop::{use_window, WindowBuilder};
+
+#[component]
+fn MultiWindow() -> Element {
+    let window = use_window();
+    
+    let open_new = move |_| {
+        window.new_window(
+            WindowBuilder::new()
+                .with_title("New Window")
+                .build()
+                .unwrap(),
+            NewWindow
+        );
+    };
+    
+    rsx! {
+        button { onclick: open_new, "Open New Window" }
+    }
+}
+
+#[component]
+fn NewWindow() -> Element {
+    rsx! {
+        h1 { "This is a new window!" }
+    }
+}
+```
+
+## Native Menus
+
+Add native menu bars using the muda crate:
+
+```rust
+use dioxus::prelude::*;
+use dioxus_desktop::{Config, muda::{Menu, Submenu, MenuItem}};
+
+fn main() {
+    let menu = Menu::new();
+    
+    let file_menu = Submenu::new("File", true);
+    file_menu.append(&MenuItem::new("Open", true, None)).unwrap();
+    file_menu.append(&MenuItem::new("Save", true, None)).unwrap();
+    file_menu.append(&MenuItem::new("Exit", true, None)).unwrap();
+    
+    menu.append(&file_menu).unwrap();
+    
+    dioxus::LaunchBuilder::new()
+        .with_cfg(Config::new().with_menu(menu))
+        .launch(App);
+}
+```
+
+### Handling Menu Events
+
+```rust
+use dioxus::prelude::*;
+use dioxus_desktop::{use_muda_event_handler, muda::MenuEvent};
+
+#[component]
+fn App() -> Element {
+    use_muda_event_handler(|event: &MenuEvent| {
+        match event.id().0.as_str() {
+            "open" => println!("Open clicked"),
+            "save" => println!("Save clicked"),
+            "exit" => std::process::exit(0),
+            _ => {}
+        }
+    });
+    
+    rsx! {
+        h1 { "Menu Example" }
+    }
+}
+```
+
+## System Tray
+
+Add a system tray icon:
+
+```rust
+use dioxus_desktop::trayicon::{TrayIconBuilder, MenuBuilder};
+
+let icon_bytes = include_bytes!("../assets/tray-icon.png");
+
+let tray = TrayIconBuilder::new()
+    .with_icon(icon_bytes)
+    .with_tooltip("My App")
+    .with_menu(Box::new(MenuBuilder::new()))
+    .build()
+    .unwrap();
+```
+
+## Custom Protocols
+
+Handle custom URL schemes:
+
+```rust
+use dioxus_desktop::Config;
+use wry::http::{Request, Response};
+use std::borrow::Cow;
+
+Config::new()
+    .with_custom_protocol("myapp", |_webview_id, request: Request<Vec<u8>>| {
+        let path = request.uri().path();
+        
+        // Load resource based on path
+        let content = match path {
+            "/data" => b"Custom data".to_vec(),
+            _ => b"Not found".to_vec(),
+        };
+        
+        Response::builder()
+            .status(200)
+            .header("Content-Type", "text/plain")
+            .body(Cow::from(content))
+            .unwrap()
+    })
+```
+
+### Async Protocol Handlers
+
+```rust
+use dioxus_desktop::Config;
+use wry::http::Response;
+use std::borrow::Cow;
+
+Config::new()
+    .with_asynchronous_custom_protocol("asset", |_webview_id, request, responder| {
+        tokio::spawn(async move {
+            // Async file loading, database queries, etc.
+            let data = load_data_async().await;
+            
+            responder.respond(
+                Response::builder()
+                    .status(200)
+                    .body(Cow::Borrowed(&data))
+                    .unwrap()
+            );
+        });
+    })
+```
+
+## File Dialogs
+
+```rust
+use dioxus::prelude::*;
+use dioxus_desktop::use_window;
+
+#[component]
+fn FileDialog() -> Element {
+    let window = use_window();
+    let mut file_path = use_signal(|| String::new());
+    
+    let open_file = move |_| {
+        spawn(async move {
+            if let Some(path) = window.open_file_dialog(
+                "Open File",
+                None,
+                vec![("Text Files", &["txt"]), ("All Files", &["*"])]
+            ).await {
+                file_path.set(path.display().to_string());
+            }
+        });
+    };
+    
+    rsx! {
+        button { onclick: open_file, "Open File" }
+        p { "Selected: {file_path}" }
+    }
+}
+```
+
+## Global Shortcuts
+
+Register system-wide keyboard shortcuts:
+
+```rust
+use dioxus::prelude::*;
+use dioxus_desktop::use_global_shortcut;
+
+#[component]
+fn App() -> Element {
+    let mut triggered = use_signal(|| 0);
+    
+    use_global_shortcut("Ctrl+Shift+K", move |state| {
+        if state.is_pressed() {
+            triggered += 1;
+        }
+    }).ok();
+    
+    rsx! {
+        h1 { "Press Ctrl+Shift+K" }
+        p { "Triggered {triggered} times" }
+    }
+}
+```
+
+## JavaScript Evaluation
+
+Execute JavaScript in the webview:
+
+```rust
+use dioxus::prelude::*;
+use dioxus_desktop::use_window;
+
+#[component]
+fn JsEval() -> Element {
+    let window = use_window();
+    
+    let run_js = move |_| {
+        spawn(async move {
+            let result = window.eval(
+                "document.title = 'Changed by JS'; return 42;"
+            ).await;
+            
+            println!("Result: {:?}", result);
+        });
+    };
+    
+    rsx! {
+        button { onclick: run_js, "Run JavaScript" }
+    }
+}
+```
+
+## Platform-Specific Code
+
+Use conditional compilation for platform-specific features:
+
+```rust
+#[cfg(target_os = "windows")]
+fn windows_specific() {
+    // Windows-only code
+}
+
+#[cfg(target_os = "macos")]
+fn macos_specific() {
+    // macOS-only code
+}
+
+#[cfg(target_os = "linux")]
+fn linux_specific() {
+    // Linux-only code
+}
+```
+
+## Packaging and Distribution
+
+### Bundle Your App
+
+```bash
+dx bundle --platform desktop --release
+```
+
+This creates platform-specific packages:
+- **Windows**: `.exe` and optionally `.msi`
+- **macOS**: `.app` bundle and `.dmg`
+- **Linux**: `.AppImage`, `.deb`, or `.rpm`
+
+### Code Signing
+
+Configure code signing in `Dioxus.toml`:
+
+```toml
+[bundle]
+identifier = "com.example.myapp"
+version = "1.0.0"
+
+[bundle.macos]
+signing_identity = "Developer ID Application: Your Name"
+
+[bundle.windows]
+digest_algorithm = "sha256"
+```
+
+## Performance Tips
+
+1. **Minimize IPC**: Batch operations to reduce message passing
+2. **Use Native Rendering**: Leverage CSS and GPU acceleration
+3. **Optimize Bundle Size**: Use `--release` and strip symbols
+4. **Preload Resources**: Load assets at startup
+
+## Next Steps
+
+- [Mobile Platform](/platforms/mobile) - Build iOS and Android apps
+- [Native Platform](/platforms/native) - GPU-rendered native UI
+- [Assets](/assets) - Manage application resources

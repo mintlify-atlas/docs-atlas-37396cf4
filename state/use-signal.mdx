@@ -1,0 +1,272 @@
+---
+title: use_signal
+description: Create reactive state with automatic dependency tracking
+---
+
+Signals are Dioxus' primary state management primitive. They provide Copy-able reactive state with automatic dependency tracking, making them easy to use across async boundaries and closures.
+
+## Basic Usage
+
+```rust
+use dioxus::prelude::*;
+
+fn Counter() -> Element {
+    let mut count = use_signal(|| 0);
+
+    rsx! {
+        button { 
+            onclick: move |_| count += 1,
+            "Count: {count}"
+        }
+    }
+}
+```
+
+## Function Signature
+
+```rust
+fn use_signal<T: 'static>(f: impl FnOnce() -> T) -> Signal<T, UnsyncStorage>
+```
+
+Creates a new Signal with the value returned by the initialization closure. The signal is owned by the current component and will be dropped when the component is dropped.
+
+### Sync Variant
+
+For signals that need to be `Send + Sync` (e.g., used across threads):
+
+```rust
+fn use_signal_sync<T: Send + Sync + 'static>(
+    f: impl FnOnce() -> T
+) -> Signal<T, SyncStorage>
+```
+
+```rust
+fn App() -> Element {
+    let mut count = use_signal_sync(|| 0);
+
+    use_future(move || async move {
+        // This signal is Send + Sync, so we can use it in another thread
+        tokio::spawn(async move {
+            count += 1;
+        }).await;
+    });
+
+    rsx! { "Count: {count}" }
+}
+```
+
+## Reading Signals
+
+### Subscribing Read
+
+Reading a signal subscribes the current component to updates:
+
+```rust
+let count = use_signal(|| 0);
+
+// These all subscribe the component:
+let value = count();          // Call syntax
+let value = *count.read();    // Explicit read
+let value = count.cloned();   // Clone the value
+```
+
+### Non-subscribing Read
+
+Use `peek()` to read without subscribing:
+
+```rust
+let mut count = use_signal(|| 0);
+
+// Read without subscribing - this component won't rerun when count changes
+let value = *count.peek();
+
+// Safe to write in the same scope
+count += 1;  // This won't cause infinite loops
+```
+
+## Writing Signals
+
+### Basic Writes
+
+```rust
+let mut count = use_signal(|| 0);
+
+// Shorthand operations
+count += 1;
+count -= 1;
+count *= 2;
+
+// Set a new value
+count.set(42);
+
+// Get mutable reference
+*count.write() = 100;
+```
+
+### Mutable Access
+
+```rust
+let mut items = use_signal(|| vec![1, 2, 3]);
+
+// Modify the inner value
+items.write().push(4);
+items.write().sort();
+
+// Use write() for complex mutations
+count.write().with_mut(|val| {
+    *val = val.saturating_add(1);
+});
+```
+
+## Copy Semantics
+
+Signals implement `Copy`, making them easy to use in closures:
+
+```rust
+let mut count = use_signal(|| 0);
+
+// No need to clone - signals are Copy
+use_future(move || async move {
+    count += 1;  // Works without cloning
+});
+
+use_effect(move || {
+    println!("Count: {count}");  // Also works
+});
+```
+
+## Automatic Dependency Tracking
+
+Components only rerender when signals they read change:
+
+```rust
+fn App() -> Element {
+    let mut count = use_signal(|| 0);
+    
+    // App component never rerenders because it doesn't read count
+    rsx! {
+        Child { count }
+    }
+}
+
+#[component]
+fn Child(count: Signal<i32>) -> Element {
+    // Only Child rerenders when count changes
+    rsx! {
+        button { 
+            onclick: move |_| count += 1,
+            "{count}"
+        }
+    }
+}
+```
+
+## Working with Complex Types
+
+### Nested Data
+
+```rust
+#[derive(Clone)]
+struct User {
+    name: String,
+    age: u32,
+}
+
+let mut user = use_signal(|| User {
+    name: "Alice".to_string(),
+    age: 30,
+});
+
+// Update specific fields
+user.write().name = "Bob".to_string();
+user.write().age += 1;
+
+// Read specific fields
+let name = user.with(|u| u.name.clone());
+```
+
+### Collections
+
+```rust
+let mut items = use_signal(|| vec!["apple", "banana"]);
+
+rsx! {
+    button { 
+        onclick: move |_| items.write().push("cherry"),
+        "Add item"
+    }
+    
+    // Iterate over signal values
+    for item in items.iter() {
+        li { "{item}" }
+    }
+}
+```
+
+## Common Patterns
+
+### Toggle Boolean
+
+```rust
+let mut enabled = use_signal(|| false);
+
+rsx! {
+    button { 
+        onclick: move |_| enabled.toggle(),
+        if enabled() { "Disable" } else { "Enable" }
+    }
+}
+```
+
+### Computed Values
+
+For derived state, use `use_memo` instead of manually computing:
+
+```rust
+let count = use_signal(|| 5);
+
+// Good: memo recomputes only when count changes
+let doubled = use_memo(move || count() * 2);
+
+// Avoid: recomputes on every render
+// let doubled = count() * 2;
+```
+
+### Async Updates
+
+```rust
+let mut status = use_signal(|| "idle".to_string());
+
+use_future(move || async move {
+    status.set("loading...".to_string());
+    
+    let result = fetch_data().await;
+    
+    status.set(format!("loaded: {result}"));
+});
+```
+
+## Type Aliases
+
+```rust
+// Regular unsync signal (default)
+type Signal<T> = Signal<T, UnsyncStorage>;
+
+// Send + Sync signal for multi-threaded use
+type SyncSignal<T> = Signal<T, SyncStorage>;
+```
+
+## Important Notes
+
+- Signals should only be created inside hooks or initialization closures
+- Creating signals in component bodies on every render will leak memory
+- Signals are owned by the component scope and dropped with it
+- Reading a signal in an effect subscribes the effect to that signal
+- Use `peek()` to read without subscribing when needed
+
+## Related
+
+- [use_effect](/state/use-effect) - Run side effects when signals change
+- [context](/state/context) - Share signals across component boundaries
+- [global-state](/state/global-state) - Application-wide signals
+- [stores](/state/stores) - Fine-grained reactivity for nested data

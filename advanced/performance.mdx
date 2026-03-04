@@ -1,0 +1,624 @@
+---
+title: Performance Optimization
+description: Optimize your Dioxus applications for maximum performance
+---
+
+Dioxus is designed for high performance, but understanding its architecture and optimization techniques can help you build even faster applications.
+
+## Virtual DOM Performance
+
+### Template System
+
+Dioxus uses a template-based virtual DOM that pre-compiles static structure:
+
+```rust
+rsx! {
+    div { class: "container",  // Static: compiled once
+        h1 { "Title" }           // Static: compiled once
+        p { "{dynamic_text}" }   // Dynamic: diffed on updates
+    }
+}
+```
+
+Only dynamic parts are diffed during re-renders, making updates very fast.
+
+**Reference**: `packages/core/src/nodes.rs:40-89`
+
+### Memoization
+
+Components automatically memoize props to prevent unnecessary re-renders:
+
+```rust
+#[derive(Props, Clone, PartialEq)]
+struct ItemProps {
+    id: usize,
+    name: String,
+}
+
+#[component]
+fn Item(props: ItemProps) -> Element {
+    // Only re-renders if props.id or props.name changes
+    rsx! {
+        div { "{props.name}" }
+    }
+}
+```
+
+Implement `PartialEq` on props to enable automatic memoization.
+
+### Keyed Lists
+
+Use keys for efficient list diffing:
+
+```rust
+#[component]
+fn TodoList(items: Vec<Todo>) -> Element {
+    rsx! {
+        for item in items {
+            // Key enables efficient reordering
+            div { key: "{item.id}",
+                "{item.text}"
+            }
+        }
+    }
+}
+```
+
+Without keys, Dioxus must diff the entire list. With keys, it can efficiently detect moves and updates.
+
+**Reference**: `packages/core/tests/diff_keyed_list.rs`
+
+## Signal Optimization
+
+### Granular Reactivity
+
+Signals provide fine-grained reactivity:
+
+```rust
+#[component]
+fn Counter() -> Element {
+    let count = use_signal(|| 0);
+    
+    // Only this text node updates, not the entire component
+    rsx! {
+        button { onclick: move |_| count += 1,
+            "Count: {count}"
+        }
+    }
+}
+```
+
+Signals track dependencies automatically and update only affected nodes.
+
+### Avoid Over-Subscription
+
+Don't read signals unnecessarily:
+
+```rust
+// Bad: Reads signal even when not needed
+fn BadComponent(count: Signal<i32>) -> Element {
+    let value = count();  // Subscribes to updates
+    
+    rsx! {
+        if some_condition {
+            div { "{value}" }
+        }
+    }
+}
+
+// Good: Only reads when needed
+fn GoodComponent(count: Signal<i32>) -> Element {
+    rsx! {
+        if some_condition {
+            div { "{count}" }  // Subscribes only inside condition
+        }
+    }
+}
+```
+
+### Computed Values
+
+Use `use_memo` for expensive derived state:
+
+```rust
+#[component]
+fn ExpensiveList(items: Signal<Vec<Item>>) -> Element {
+    // Memoized: only recomputes when items changes
+    let filtered = use_memo(move || {
+        items()
+            .iter()
+            .filter(|item| item.active)
+            .cloned()
+            .collect::<Vec<_>>()
+    });
+    
+    rsx! {
+        for item in filtered() {
+            div { "{item.name}" }
+        }
+    }
+}
+```
+
+## Component Architecture
+
+### Scope Height Optimization
+
+Dioxus renders scopes top-to-bottom by height. Keep frequently updated components shallow:
+
+```rust
+// Bad: Deep nesting causes cascading updates
+fn App() -> Element {
+    rsx! {
+        Container {
+            Wrapper {
+                Content {
+                    Counter {}  // Height: 3, slower updates
+                }
+            }
+        }
+    }
+}
+
+// Good: Flat structure
+fn App() -> Element {
+    rsx! {
+        Counter {}  // Height: 1, faster updates
+    }
+}
+```
+
+**Reference**: `packages/core/src/virtual_dom.rs:379-404`
+
+### Component Splitting
+
+Split large components to minimize re-render scope:
+
+```rust
+// Bad: Entire component re-renders on any state change
+#[component]
+fn LargeComponent() -> Element {
+    let count = use_signal(|| 0);
+    let items = use_signal(|| vec![]);
+    
+    rsx! {
+        div {
+            Counter { count }  // Re-renders when items changes
+            ItemList { items }  // Re-renders when count changes
+        }
+    }
+}
+
+// Good: Independent components
+#[component]
+fn OptimizedComponent() -> Element {
+    let count = use_signal(|| 0);
+    let items = use_signal(|| vec![]);
+    
+    rsx! {
+        div {
+            Counter { count }  // Only re-renders when count changes
+            ItemList { items }  // Only re-renders when items changes
+        }
+    }
+}
+
+#[component]
+fn Counter(count: Signal<i32>) -> Element {
+    rsx! { "Count: {count}" }
+}
+
+#[component]
+fn ItemList(items: Signal<Vec<String>>) -> Element {
+    rsx! {
+        for item in items() {
+            div { "{item}" }
+        }
+    }
+}
+```
+
+## Async Performance
+
+### Task Management
+
+Avoid spawning too many tasks:
+
+```rust
+// Bad: Creates many concurrent tasks
+#[component]
+fn DataLoader() -> Element {
+    let data = use_signal(|| vec![]);
+    
+    for i in 0..100 {
+        spawn(async move {
+            let item = fetch_item(i).await;
+            data.write().push(item);
+        });
+    }
+    
+    rsx! { /* ... */ }
+}
+
+// Good: Batch requests
+#[component]
+fn OptimizedDataLoader() -> Element {
+    let data = use_resource(move || async move {
+        fetch_all_items().await
+    });
+    
+    rsx! { /* ... */ }
+}
+```
+
+### Suspense Boundaries
+
+Use suspense to avoid blocking the UI:
+
+```rust
+#[component]
+fn App() -> Element {
+    rsx! {
+        Suspense {
+            fallback: |_| rsx! { "Loading..." },
+            AsyncContent {}  // Doesn't block other components
+        }
+        InteractiveContent {}  // Renders immediately
+    }
+}
+```
+
+### Resource Deduplication
+
+```rust
+use std::sync::Arc;
+use once_cell::sync::Lazy;
+
+static API_CLIENT: Lazy<Arc<ApiClient>> = Lazy::new(|| {
+    Arc::new(ApiClient::new())
+});
+
+#[component]
+fn DataComponent() -> Element {
+    let client = use_hook(|| API_CLIENT.clone());
+    
+    // Reuses same client across component instances
+    let data = use_resource(move || async move {
+        client.fetch_data().await
+    });
+    
+    rsx! { /* ... */ }
+}
+```
+
+## Memory Optimization
+
+### Avoid Large Clones
+
+```rust
+// Bad: Clones large data on every render
+#[component]
+fn BadList(items: Vec<LargeItem>) -> Element {
+    rsx! {
+        for item in items {  // Clones entire vector
+            div { "{item.name}" }
+        }
+    }
+}
+
+// Good: Use references or Arc
+#[component]
+fn GoodList(items: Signal<Vec<LargeItem>>) -> Element {
+    rsx! {
+        for item in items.read().iter() {  // Borrows, no clone
+            div { "{item.name}" }
+        }
+    }
+}
+```
+
+### Drop Unused Resources
+
+```rust
+#[component]
+fn DataComponent() -> Element {
+    let data = use_resource(|| fetch_data());
+    
+    use_effect(move || {
+        // Cleanup when component unmounts
+        move || {
+            data.cancel();  // Cancel pending requests
+        }
+    });
+    
+    rsx! { /* ... */ }
+}
+```
+
+### Scope Context Sharing
+
+Use context to avoid prop drilling without performance cost:
+
+```rust
+#[derive(Clone)]
+struct AppState {
+    theme: Signal<Theme>,
+    user: Signal<Option<User>>,
+}
+
+#[component]
+fn App() -> Element {
+    use_context_provider(|| AppState {
+        theme: Signal::new(Theme::Light),
+        user: Signal::new(None),
+    });
+    
+    rsx! { /* ... */ }
+}
+
+#[component]
+fn DeepChild() -> Element {
+    let state = use_context::<AppState>();
+    // Accesses state without prop drilling
+    
+    rsx! { /* ... */ }
+}
+```
+
+## Rendering Performance
+
+### Batch Updates
+
+```rust
+#[component]
+fn BatchedUpdates() -> Element {
+    let items = use_signal(|| vec![]);
+    
+    let add_many = move |_| {
+        // Bad: Each push causes a re-render
+        // for i in 0..100 {
+        //     items.write().push(i);
+        // }
+        
+        // Good: Single update
+        items.write().extend(0..100);
+    };
+    
+    rsx! {
+        button { onclick: add_many, "Add Items" }
+        for item in items() {
+            div { "{item}" }
+        }
+    }
+}
+```
+
+### Debounce User Input
+
+```rust
+use std::time::Duration;
+
+#[component]
+fn SearchBox() -> Element {
+    let query = use_signal(|| String::new());
+    let results = use_signal(|| vec![]);
+    
+    use_effect(move || {
+        let q = query();
+        
+        // Debounce search
+        spawn(async move {
+            tokio::time::sleep(Duration::from_millis(300)).await;
+            
+            if query() == q {  // Still same query?
+                let data = search(&q).await;
+                results.set(data);
+            }
+        });
+    });
+    
+    rsx! {
+        input {
+            oninput: move |e| query.set(e.value()),
+            value: "{query}"
+        }
+        for result in results() {
+            div { "{result}" }
+        }
+    }
+}
+```
+
+### Virtual Scrolling
+
+For large lists, render only visible items:
+
+```rust
+#[component]
+fn VirtualList(items: Vec<String>) -> Element {
+    let scroll_offset = use_signal(|| 0);
+    let viewport_height = 600;
+    let item_height = 50;
+    
+    let visible_start = scroll_offset() / item_height;
+    let visible_count = (viewport_height / item_height) + 2;
+    let visible_items = &items[visible_start..visible_start + visible_count];
+    
+    rsx! {
+        div {
+            style: "height: {viewport_height}px; overflow-y: scroll",
+            onscroll: move |e| scroll_offset.set(e.scroll_top()),
+            
+            div { style: "height: {items.len() * item_height}px",
+                for (i, item) in visible_items.iter().enumerate() {
+                    div {
+                        key: "{i}",
+                        style: "position: absolute; top: {(visible_start + i) * item_height}px",
+                        "{item}"
+                    }
+                }
+            }
+        }
+    }
+}
+```
+
+## Build Optimization
+
+### Release Builds
+
+Always use release mode for production:
+
+```bash
+dx build --release
+```
+
+Release mode enables:
+- LLVM optimizations
+- Dead code elimination
+- Inlining
+- LTO (Link Time Optimization)
+
+### WASM Optimization
+
+For web builds, optimize WASM size:
+
+```toml
+# Cargo.toml
+[profile.release]
+opt-level = "z"  # Optimize for size
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = true
+```
+
+### Asset Optimization
+
+Use manganis for automatic asset optimization:
+
+```rust
+use manganis::{asset, Asset, AssetOptions, ImageFormat};
+
+// Automatically optimized at build time
+const HERO: Asset = asset!(
+    "/assets/hero.jpg",
+    AssetOptions::image()
+        .with_format(ImageFormat::Webp)  // Better compression
+);
+```
+
+## Profiling
+
+### Chrome DevTools
+
+For web builds, use Chrome's Performance profiler:
+
+1. Open DevTools (F12)
+2. Go to Performance tab
+3. Click Record
+4. Interact with your app
+5. Stop recording
+6. Analyze flame graph
+
+### Tracing
+
+Enable tracing for detailed logs:
+
+```rust
+use tracing_subscriber;
+
+fn main() {
+    tracing_subscriber::fmt()
+        .with_max_level(tracing::Level::TRACE)
+        .init();
+    
+    dioxus::launch(app);
+}
+```
+
+This logs:
+- Component renders
+- Scope creation/destruction
+- Task execution
+- Event handling
+
+**Reference**: `packages/core/src/virtual_dom.rs:307-331`
+
+### Custom Metrics
+
+```rust
+use std::time::Instant;
+
+#[component]
+fn MetricsComponent() -> Element {
+    use_effect(move || {
+        let start = Instant::now();
+        
+        move || {
+            let duration = start.elapsed();
+            println!("Component lifetime: {:?}", duration);
+        }
+    });
+    
+    rsx! { /* ... */ }
+}
+```
+
+## Benchmarking
+
+Create benchmarks to measure performance:
+
+```rust
+// benches/rendering.rs
+use criterion::{black_box, criterion_group, criterion_main, Criterion};
+use dioxus::prelude::*;
+
+fn benchmark_render(c: &mut Criterion) {
+    c.bench_function("render 1000 items", |b| {
+        let mut dom = VirtualDom::new(|| rsx! {
+            for i in 0..1000 {
+                div { key: "{i}", "Item {i}" }
+            }
+        });
+        
+        b.iter(|| {
+            dom.rebuild_in_place();
+        });
+    });
+}
+
+criterion_group!(benches, benchmark_render);
+criterion_main!(benches);
+```
+
+Run with:
+```bash
+cargo bench
+```
+
+## Best Practices
+
+1. **Measure First**: Profile before optimizing
+2. **Use Keys**: Always key dynamic lists
+3. **Memoize Props**: Implement `PartialEq` on props
+4. **Granular Signals**: Use signals for fine-grained reactivity
+5. **Batch Updates**: Group multiple state changes
+6. **Lazy Loading**: Use suspense for async content
+7. **Optimize Assets**: Use manganis for asset optimization
+8. **Release Builds**: Always benchmark in release mode
+
+## Common Pitfalls
+
+1. **Over-optimization**: Don't optimize without profiling
+2. **Premature Memoization**: Simple components don't need memoization
+3. **Too Many Signals**: Signals have overhead, use sparingly
+4. **Large Props**: Avoid cloning large data structures
+5. **Blocking Async**: Don't block in async tasks
+
+## Additional Resources
+
+- Core architecture: `notes/architecture/01-CORE.md`
+- Signals architecture: `notes/architecture/04-SIGNALS.md`
+- VirtualDOM source: `packages/core/src/virtual_dom.rs`
+- Diff algorithm: `packages/core/src/diff/`

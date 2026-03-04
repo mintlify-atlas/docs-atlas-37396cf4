@@ -1,0 +1,458 @@
+---
+title: Stores
+description: Fine-grained reactivity for nested data structures
+---
+
+Stores provide fine-grained reactivity for nested data structures. Unlike regular signals where any write causes all subscribers to update, stores create subscriptions to specific fields, enabling efficient updates in complex applications.
+
+## Basic Usage
+
+```rust
+use dioxus::prelude::*;
+use dioxus_stores::*;
+
+#[derive(Store, Default)]
+struct User {
+    name: String,
+    age: u32,
+}
+
+fn App() -> Element {
+    let mut user = use_store(|| User {
+        name: "Alice".to_string(),
+        age: 30,
+    });
+    
+    rsx! {
+        NameEditor { user }
+        AgeDisplay { user }
+    }
+}
+
+#[component]
+fn NameEditor(mut user: Store<User>) -> Element {
+    // Only subscribes to the name field
+    let mut name = user.name();
+    
+    rsx! {
+        input {
+            value: "{name}",
+            oninput: move |e| name.set(e.value())
+        }
+    }
+}
+
+#[component] 
+fn AgeDisplay(user: Store<User>) -> Element {
+    // Only subscribes to the age field
+    let age = user.age();
+    
+    // This component won't rerender when name changes!
+    rsx! { "Age: {age}" }
+}
+```
+
+## Creating Stores
+
+### use_store
+
+```rust
+fn use_store<T: 'static>(init: impl FnOnce() -> T) -> Store<T>
+```
+
+Creates a new store owned by the current component:
+
+```rust
+let mut store = use_store(|| MyStruct {
+    field1: "value".to_string(),
+    field2: 42,
+});
+```
+
+### use_store_sync
+
+```rust
+fn use_store_sync<T: Send + Sync + 'static>(
+    init: impl FnOnce() -> T
+) -> SyncStore<T>
+```
+
+Creates a thread-safe store:
+
+```rust
+let mut store = use_store_sync(|| MyStruct::default());
+```
+
+## Deriving Store
+
+The `Store` derive macro generates methods to access fields:
+
+```rust
+#[derive(Store)]
+struct TodoState {
+    todos: HashMap<u32, TodoItem>,
+    filter: FilterState,
+}
+
+// Generates:
+// - todos(self) -> Store<HashMap<u32, TodoItem>, _>
+// - filter(self) -> Store<FilterState, _>
+```
+
+### Generated Methods
+
+For each field, the macro generates a method that returns a scoped store:
+
+```rust
+let mut todo_state = use_store(|| TodoState::default());
+
+// Access specific fields
+let mut todos = todo_state.todos();
+let mut filter = todo_state.filter();
+
+// Read/write through the scoped store
+let current_filter = filter();
+filter.set(FilterState::Active);
+```
+
+## Store Extension Traits
+
+Add custom methods to stores with the `#[store]` attribute:
+
+```rust
+#[derive(Store)]
+struct Counter {
+    count: i32,
+}
+
+#[store]
+impl<Lens> Store<Counter, Lens> {
+    // &self methods require Lens: Readable
+    fn is_positive(&self) -> bool {
+        self.count().cloned() > 0
+    }
+    
+    // &mut self methods require Lens: Writable  
+    fn increment(&mut self) {
+        *self.count().write() += 1;
+    }
+    
+    fn reset(&mut self) {
+        self.count().set(0);
+    }
+}
+
+#[component]
+fn CounterComponent(mut counter: Store<Counter>) -> Element {
+    rsx! {
+        button { 
+            onclick: move |_| counter.increment(),
+            "Increment" 
+        }
+        
+        if counter.is_positive() {
+            "Counter is positive!"
+        }
+    }
+}
+```
+
+## Working with Collections
+
+### Vectors
+
+```rust
+#[derive(Store, Default)]
+struct TodoList {
+    items: Vec<String>,
+}
+
+let mut list = use_store(TodoList::default);
+let mut items = list.items();
+
+// Collection operations
+items.push("New item".to_string());
+items.write().remove(0);
+items.write().clear();
+
+// Iterate with stores
+for item in items.iter() {
+    // Each item is a Store<String>
+}
+```
+
+### HashMaps
+
+```rust
+use std::collections::HashMap;
+
+#[derive(Store, Default)]
+struct TodoState {
+    todos: HashMap<u32, TodoItem>,
+}
+
+let mut state = use_store(TodoState::default);
+let mut todos = state.todos();
+
+// Map operations
+todos.insert(1, TodoItem::new("Buy milk"));
+todos.remove(&1);
+
+// Get specific entries
+if let Some(todo) = todos.get(1) {
+    // todo is Store<TodoItem>
+    let mut checked = todo.checked();
+    checked.set(true);
+}
+```
+
+## Complete Example: TodoMVC
+
+```rust
+use dioxus::prelude::*;
+use dioxus_stores::*;
+use std::collections::HashMap;
+
+#[derive(Store, PartialEq, Clone, Debug)]
+struct TodoState {
+    todos: HashMap<u32, TodoItem>,
+    filter: FilterState,
+}
+
+#[derive(Store, PartialEq, Clone, Debug)]
+struct TodoItem {
+    checked: bool,
+    contents: String,
+}
+
+#[derive(PartialEq, Eq, Clone, Copy, Debug)]
+enum FilterState {
+    All,
+    Active,
+    Completed,
+}
+
+// Custom methods for TodoState
+#[store]
+impl<Lens> Store<TodoState, Lens> {
+    fn active_items(&self) -> Vec<u32> {
+        let filter = self.filter().cloned();
+        self.todos()
+            .iter()
+            .filter_map(|(id, item)| {
+                item.active(filter).then_some(id)
+            })
+            .collect()
+    }
+    
+    fn incomplete_count(&self) -> usize {
+        self.todos()
+            .values()
+            .filter(|item| !item.checked().cloned())
+            .count()
+    }
+}
+
+// Custom methods for TodoItem  
+#[store]
+impl<Lens> Store<TodoItem, Lens> {
+    fn complete(&self) -> bool {
+        self.checked().cloned()
+    }
+    
+    fn incomplete(&self) -> bool {
+        !self.complete()
+    }
+    
+    fn active(&self, filter: FilterState) -> bool {
+        match filter {
+            FilterState::All => true,
+            FilterState::Active => self.incomplete(),
+            FilterState::Completed => self.complete(),
+        }
+    }
+}
+
+fn App() -> Element {
+    let mut todos = use_store(|| TodoState {
+        todos: HashMap::new(),
+        filter: FilterState::All,
+    });
+    
+    let filtered_todos = use_memo(move || todos.active_items());
+    
+    rsx! {
+        section { class: "todoapp",
+            TodoHeader { todos }
+            
+            ul { class: "todo-list",
+                for id in filtered_todos() {
+                    TodoEntry { key: "{id}", id, todos }
+                }
+            }
+        }
+    }
+}
+
+#[component]
+fn TodoHeader(mut todos: Store<TodoState>) -> Element {
+    let mut draft = use_signal(String::new);
+    let mut todo_id = use_signal(|| 0);
+    
+    let onkeydown = move |evt: KeyboardEvent| {
+        if evt.key() == Key::Enter && !draft().is_empty() {
+            let id = todo_id();
+            let item = TodoItem {
+                checked: false,
+                contents: draft.take(),
+            };
+            todos.todos().insert(id, item);
+            todo_id += 1;
+        }
+    };
+    
+    rsx! {
+        header { class: "header",
+            input {
+                class: "new-todo",
+                placeholder: "What needs to be done?",
+                value: "{draft}",
+                oninput: move |e| draft.set(e.value()),
+                onkeydown
+            }
+        }
+    }
+}
+
+#[component]
+fn TodoEntry(mut todos: Store<TodoState>, id: u32) -> Element {
+    let mut is_editing = use_signal(|| false);
+    
+    // Only subscribes to this specific todo item
+    let entry = todos.todos().get(id).unwrap();
+    let checked = entry.checked();
+    let contents = entry.contents();
+    
+    rsx! {
+        li {
+            class: if checked() { "completed" },
+            class: if is_editing() { "editing" },
+            
+            div { class: "view",
+                input {
+                    class: "toggle",
+                    r#type: "checkbox",
+                    checked: "{checked}",
+                    oninput: move |e| entry.checked().set(e.checked())
+                }
+                
+                label {
+                    ondoubleclick: move |_| is_editing.set(true),
+                    "{contents}"
+                }
+                
+                button {
+                    class: "destroy",
+                    onclick: move |_| { todos.todos().remove(&id); }
+                }
+            }
+            
+            if is_editing() {
+                input {
+                    class: "edit",
+                    value: "{contents}",
+                    oninput: move |e| entry.contents().set(e.value()),
+                    onfocusout: move |_| is_editing.set(false)
+                }
+            }
+        }
+    }
+}
+```
+
+## Store Types
+
+```rust
+// Default writable store
+Store<T, WriteSignal<T>>
+
+// Read-only store
+ReadStore<T, UnsyncStorage>
+
+// Write-only store  
+WriteStore<T, UnsyncStorage>
+
+// Thread-safe store
+SyncStore<T>
+```
+
+## Performance Benefits
+
+Stores provide granular subscriptions:
+
+```rust
+#[derive(Store)]
+struct AppState {
+    user: User,
+    posts: Vec<Post>,
+    settings: Settings,
+}
+
+let state = use_store(AppState::default);
+
+// Component A only subscribes to user
+let user = state.user();
+
+// Component B only subscribes to posts
+let posts = state.posts();
+
+// Component C only subscribes to settings
+let settings = state.settings();
+
+// Updating user won't rerender components B and C!
+state.user().write().name = "Bob".to_string();
+```
+
+## Stores vs Signals
+
+### Use Signals When:
+
+- Simple, flat data structures
+- All fields typically update together
+- Small state (few fields)
+
+### Use Stores When:
+
+- Complex nested structures
+- Different components need different fields
+- Large structures where whole-object updates are expensive
+- Working with collections (Vec, HashMap)
+
+## Global Stores
+
+```rust
+#[derive(Store)]
+struct AppConfig {
+    theme: String,
+    language: String,
+}
+
+static CONFIG: GlobalStore<AppConfig> = Global::new(|| AppConfig {
+    theme: "dark".to_string(),
+    language: "en".to_string(),
+});
+
+fn App() -> Element {
+    let theme = CONFIG.resolve().theme();
+    
+    rsx! {
+        div { class: "{theme}", "Content" }
+    }
+}
+```
+
+## Related
+
+- [use_signal](/state/use-signal) - Simple reactive state
+- [context](/state/context) - Sharing state across components
+- [global-state](/state/global-state) - Application-wide state

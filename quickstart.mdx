@@ -1,80 +1,603 @@
 ---
-title: "Quickstart"
-description: "Start building awesome documentation in minutes"
+title: Quick Start
+description: Build your first Dioxus application in minutes with this hands-on tutorial covering components, state management, and interactivity.
 ---
 
-## Get started in three steps
+# Quick Start
 
-Get your documentation site running locally and make your first customization.
-
-### Step 1: Set up your local environment
-
-<AccordionGroup>
-  <Accordion icon="copy" title="Clone your docs locally">
-    During the onboarding process, you created a GitHub repository with your docs content if you didn't already have one. You can find a link to this repository in your [dashboard](https://dashboard.mintlify.com).
-    
-    To clone the repository locally so that you can make and preview changes to your docs, follow the [Cloning a repository](https://docs.github.com/en/repositories/creating-and-managing-repositories/cloning-a-repository) guide in the GitHub docs.
-  </Accordion>
-  <Accordion icon="rectangle-terminal" title="Start the preview server">
-    1. Install the Mintlify CLI: `npm i -g mint`
-    2. Navigate to your docs directory and run: `mint dev`
-    3. Open `http://localhost:3000` to see your docs live!
-    
-    <Tip>Your preview updates automatically as you edit files.</Tip>
-  </Accordion>
-</AccordionGroup>
-
-### Step 2: Deploy your changes
-
-<AccordionGroup>
-  <Accordion icon="github" title="Install our GitHub app">
-    Install the Mintlify GitHub app from your [dashboard](https://dashboard.mintlify.com/settings/organization/github-app).
-    
-    Our GitHub app automatically deploys your changes to your docs site, so you don't need to manage deployments yourself.
-</Accordion>
-<Accordion icon="palette" title="Update your site name and colors">
-    For a first change, let's update the name and colors of your docs site.
-
-    1. Open `docs.json` in your editor.
-    2. Change the `"name"` field to your project name.
-    3. Update the `"colors"` to match your brand.
-    4. Save and see your changes instantly at `http://localhost:3000`.
-
-    <Tip>Try changing the primary color to see an immediate difference!</Tip>
-  </Accordion>
-</AccordionGroup>
-
-### Step 3: Go live
-
-<Accordion icon="rocket" title="Publish your docs">
-  1. Commit and push your changes.
-  2. Your docs will update and be live in moments!
-</Accordion>
-
-## Next steps
-
-Now that you have your docs running, explore these key features:
-
-<CardGroup cols={2}>
-
-<Card title="Write Content" icon="pen-to-square" href="/essentials/markdown">
-  Learn MDX syntax and start writing your documentation.
-</Card>
-
-<Card title="Customize style" icon="palette" href="/essentials/settings">
-  Make your docs match your brand perfectly.
-</Card>
-
-<Card title="Add code examples" icon="square-code" href="/essentials/code">
-  Include syntax-highlighted code blocks.
-</Card>
-
-<Card title="API documentation" icon="code" href="/api-reference/introduction">
-  Auto-generate API docs from OpenAPI specs.
-</Card>
-
-</CardGroup>
+In this tutorial, you'll build your first interactive Dioxus application. We'll create a counter app with multiple features to demonstrate the core concepts of Dioxus development.
 
 <Note>
-  **Need help?** See our [full documentation](https://mintlify.com/docs) or join our [community](https://mintlify.com/community).
+Before starting, make sure you've completed the [Installation](/installation) guide and have the Dioxus CLI installed.
 </Note>
+
+## Create Your First App
+
+Let's start by creating a new Dioxus project:
+
+<Steps>
+  <Step title="Create a new project">
+    Run the following command in your terminal:
+
+    ```bash
+    dx new my-counter-app
+    ```
+
+    You'll be prompted to choose a template. Select **Web App** for this tutorial.
+  </Step>
+
+  <Step title="Navigate to your project">
+    ```bash
+    cd my-counter-app
+    ```
+  </Step>
+
+  <Step title="Start the development server">
+    ```bash
+    dx serve
+    ```
+
+    This will compile your app and open it in your default browser. You should see a welcome message!
+  </Step>
+</Steps>
+
+## Understanding the Basics
+
+Open `src/main.rs` in your editor. You'll see something like this:
+
+```rust
+use dioxus::prelude::*;
+
+fn main() {
+    dioxus::launch(app);
+}
+
+fn app() -> Element {
+    rsx! {
+        div { "Hello, world!" }
+    }
+}
+```
+
+Let's break this down:
+
+<AccordionGroup>
+  <Accordion title="Import the prelude">
+    ```rust
+    use dioxus::prelude::*;
+    ```
+
+    This imports all the commonly used Dioxus types and macros, including `Element`, `rsx!`, component macros, and more.
+  </Accordion>
+
+  <Accordion title="Launch the app">
+    ```rust
+    fn main() {
+        dioxus::launch(app);
+    }
+    ```
+
+    The `launch` function starts your Dioxus application. It takes a root component function (in this case, `app`) and renders it using the appropriate renderer for your platform.
+  </Accordion>
+
+  <Accordion title="Define a component">
+    ```rust
+    fn app() -> Element {
+        rsx! {
+            div { "Hello, world!" }
+        }
+    }
+    ```
+
+    Components are functions that return `Element`. The `rsx!` macro lets you write HTML-like syntax that compiles to Rust code.
+  </Accordion>
+</AccordionGroup>
+
+## Building a Counter App
+
+Now let's build something interactive! Replace the contents of `src/main.rs` with:
+
+```rust
+use dioxus::prelude::*;
+
+fn main() {
+    dioxus::launch(app);
+}
+
+fn app() -> Element {
+    // Create a reactive state variable
+    let mut count = use_signal(|| 0);
+
+    rsx! {
+        div {
+            h1 { "Counter: {count}" }
+            button { 
+                onclick: move |_| count += 1,
+                "Increment" 
+            }
+            button { 
+                onclick: move |_| count -= 1,
+                "Decrement" 
+            }
+        }
+    }
+}
+```
+
+Save the file and watch your browser update automatically with hot-reload!
+
+### What's New?
+
+<CardGroup cols={2}>
+  <Card title="State with Signals" icon="signal">
+    ```rust
+    let mut count = use_signal(|| 0);
+    ```
+
+    `use_signal` creates reactive state. The closure `|| 0` initializes the value to 0. The `mut` keyword allows us to modify the signal.
+  </Card>
+
+  <Card title="Event Handlers" icon="hand-pointer">
+    ```rust
+    onclick: move |_| count += 1
+    ```
+
+    Event handlers are closures that run when events occur. We use `move` to capture variables and `+=` to modify the signal.
+  </Card>
+
+  <Card title="Interpolation" icon="code">
+    ```rust
+    h1 { "Counter: {count}" }
+    ```
+
+    Use curly braces `{}` to embed Rust expressions in your UI. When `count` changes, this text updates automatically.
+  </Card>
+
+  <Card title="RSX Syntax" icon="file-code">
+    ```rust
+    button { onclick: handler, "Text" }
+    ```
+
+    Elements are written like function calls. Attributes come first (onclick), then children ("Text").
+  </Card>
+</CardGroup>
+
+## Adding More Features
+
+Let's enhance our counter with additional functionality:
+
+```rust
+use dioxus::prelude::*;
+
+fn main() {
+    dioxus::launch(app);
+}
+
+fn app() -> Element {
+    let mut count = use_signal(|| 0);
+    
+    // Computed value that's automatically updated
+    let doubled = use_memo(move || count() * 2);
+    
+    // Side effect that runs when count changes
+    use_effect(move || {
+        println!("Count changed to: {}", count());
+    });
+
+    rsx! {
+        div { 
+            style: "font-family: Arial; padding: 20px;",
+            
+            h1 { "High-Five Counter" }
+            
+            div { 
+                style: "font-size: 24px; margin: 20px 0;",
+                "Current count: {count}" 
+            }
+            
+            div {
+                style: "font-size: 18px; color: #666; margin-bottom: 20px;",
+                "Doubled: {doubled}"
+            }
+            
+            div { 
+                style: "display: flex; gap: 10px;",
+                
+                button { 
+                    onclick: move |_| count += 1,
+                    "Up high! 🙌" 
+                }
+                button { 
+                    onclick: move |_| count -= 1,
+                    "Down low! 👇" 
+                }
+                button {
+                    onclick: move |_| count.set(0),
+                    "Reset 🔄"
+                }
+            }
+            
+            // Conditional rendering
+            if count() > 10 {
+                div { 
+                    style: "color: green; margin-top: 20px; font-weight: bold;",
+                    "Wow, that's a lot of high fives! 🎉" 
+                }
+            }
+            
+            if count() < 0 {
+                div { 
+                    style: "color: red; margin-top: 20px; font-weight: bold;",
+                    "Going negative? That's low! 😅" 
+                }
+            }
+        }
+    }
+}
+```
+
+### New Concepts Introduced
+
+<Tabs>
+  <Tab title="Memoization">
+    ```rust
+    let doubled = use_memo(move || count() * 2);
+    ```
+
+    `use_memo` creates a computed value that automatically updates when its dependencies change. It's only recalculated when `count` changes, making it efficient.
+
+    <Tip>
+    Use memos for expensive computations or derived state to avoid unnecessary recalculations.
+    </Tip>
+  </Tab>
+
+  <Tab title="Effects">
+    ```rust
+    use_effect(move || {
+        println!("Count changed to: {}", count());
+    });
+    ```
+
+    `use_effect` runs side effects when dependencies change. Perfect for logging, API calls, or syncing with external systems.
+
+    <Note>
+    Effects run after the component renders and whenever captured signals change.
+    </Note>
+  </Tab>
+
+  <Tab title="Conditional Rendering">
+    ```rust
+    if count() > 10 {
+        div { "High score!" }
+    }
+    ```
+
+    Use regular Rust `if` statements inside `rsx!` for conditional rendering. Only the matching branch is rendered.
+  </Tab>
+
+  <Tab title="Inline Styles">
+    ```rust
+    div { style: "color: red; font-size: 20px;", ... }
+    ```
+
+    Add CSS styles directly with the `style` attribute. For larger apps, consider using external CSS files or Tailwind CSS.
+  </Tab>
+</Tabs>
+
+## Creating Reusable Components
+
+Let's extract our counter controls into a reusable component:
+
+```rust
+use dioxus::prelude::*;
+
+fn main() {
+    dioxus::launch(app);
+}
+
+fn app() -> Element {
+    let mut count = use_signal(|| 0);
+
+    rsx! {
+        div { style: "font-family: Arial; padding: 20px;",
+            h1 { "High-Five Counter" }
+            
+            CounterDisplay { value: count() }
+            
+            CounterControls { 
+                count: count,
+            }
+        }
+    }
+}
+
+// Display component with props
+#[component]
+fn CounterDisplay(value: i32) -> Element {
+    let doubled = value * 2;
+    
+    rsx! {
+        div { style: "margin: 20px 0;",
+            div { 
+                style: "font-size: 24px; font-weight: bold;",
+                "Current count: {value}" 
+            }
+            div {
+                style: "font-size: 18px; color: #666;",
+                "Doubled: {doubled}"
+            }
+        }
+    }
+}
+
+// Controls component that modifies state
+#[component]
+fn CounterControls(count: Signal<i32>) -> Element {
+    rsx! {
+        div { style: "display: flex; gap: 10px;",
+            button { 
+                onclick: move |_| count += 1,
+                "Up high! 🙌" 
+            }
+            button { 
+                onclick: move |_| count -= 1,
+                "Down low! 👇" 
+            }
+            button {
+                onclick: move |_| count.set(0),
+                "Reset 🔄"
+            }
+        }
+    }
+}
+```
+
+### Component Props
+
+<AccordionGroup>
+  <Accordion title="The #[component] macro">
+    ```rust
+    #[component]
+    fn CounterDisplay(value: i32) -> Element { ... }
+    ```
+
+    The `#[component]` macro automatically creates a props struct from your function parameters. It's not required but highly recommended for better error messages and auto-completion.
+  </Accordion>
+
+  <Accordion title="Passing props">
+    ```rust
+    CounterDisplay { value: count() }
+    ```
+
+    Props are passed using the component name followed by key-value pairs. The syntax is similar to struct initialization.
+  </Accordion>
+
+  <Accordion title="Passing signals">
+    ```rust
+    CounterControls { count: count }
+    ```
+
+    You can pass signals directly to child components. This allows children to read and modify parent state.
+
+    <Tip>
+    For read-only access, use `ReadSignal<T>` as the parameter type instead of `Signal<T>`.
+    </Tip>
+  </Accordion>
+</AccordionGroup>
+
+## Working with Lists
+
+Let's create a multi-counter app that manages a list of counters:
+
+```rust
+use dioxus::prelude::*;
+
+fn main() {
+    dioxus::launch(app);
+}
+
+fn app() -> Element {
+    let mut counters = use_signal(|| vec![0, 0, 0]);
+    let sum = use_memo(move || counters.read().iter().sum::<i32>());
+
+    rsx! {
+        div { style: "font-family: Arial; padding: 20px;",
+            h1 { "Multiple Counters" }
+            
+            div { style: "margin: 20px 0;",
+                button { 
+                    onclick: move |_| counters.push(0),
+                    "➕ Add Counter" 
+                }
+                button { 
+                    onclick: move |_| { counters.pop(); },
+                    "➖ Remove Counter" 
+                }
+            }
+            
+            h3 { "Total: {sum}" }
+            
+            // Iterate over counters
+            for (i, counter) in counters.iter().enumerate() {
+                div { 
+                    key: "{i}",
+                    style: "display: flex; gap: 10px; align-items: center; margin: 10px 0;",
+                    
+                    span { "Counter {i + 1}:" }
+                    
+                    button { 
+                        onclick: move |_| counters.write()[i] -= 1,
+                        "−" 
+                    }
+                    
+                    span { 
+                        style: "font-weight: bold; min-width: 40px; text-align: center;",
+                        "{counter}" 
+                    }
+                    
+                    button { 
+                        onclick: move |_| counters.write()[i] += 1,
+                        "+" 
+                    }
+                    
+                    button {
+                        onclick: move |_| { counters.remove(i); },
+                        "🗑️"
+                    }
+                }
+            }
+        }
+    }
+}
+```
+
+### List Rendering Concepts
+
+<Steps>
+  <Step title="Store collections in signals">
+    ```rust
+    let mut counters = use_signal(|| vec![0, 0, 0]);
+    ```
+
+    Vectors, HashMaps, and other collections can be stored in signals. When the collection changes, the UI updates.
+  </Step>
+
+  <Step title="Iterate with for loops">
+    ```rust
+    for (i, counter) in counters.iter().enumerate() {
+        div { key: "{i}", ... }
+    }
+    ```
+
+    Use regular Rust `for` loops to iterate. Calling `.iter()` on a `Signal<Vec<T>>` gives you reactive access to each item.
+  </Step>
+
+  <Step title="Add unique keys">
+    ```rust
+    div { key: "{i}", ... }
+    ```
+
+    Keys help Dioxus identify which items changed, improving rendering efficiency.
+
+    <Warning>
+    In production apps, use stable IDs instead of indices for keys. Indices can cause issues when items are reordered.
+    </Warning>
+  </Step>
+
+  <Step title="Modify collections">
+    ```rust
+    counters.write()[i] += 1  // Modify item
+    counters.push(0)          // Add item
+    counters.remove(i)        // Remove item
+    ```
+
+    Use `.write()` to get mutable access to the collection, then use standard Vec methods.
+  </Step>
+</Steps>
+
+## Next Steps
+
+Congratulations! You've built your first Dioxus apps and learned the fundamentals:
+
+<CardGroup cols={2}>
+  <Card title="✅ Components" icon="puzzle-piece">
+    Creating reusable UI functions with props
+  </Card>
+  <Card title="✅ State Management" icon="database">
+    Using signals for reactive state
+  </Card>
+  <Card title="✅ Event Handling" icon="hand-pointer">
+    Responding to user interactions
+  </Card>
+  <Card title="✅ List Rendering" icon="list">
+    Working with collections and iteration
+  </Card>
+</CardGroup>
+
+### Where to Go Next
+
+<CardGroup cols={2}>
+  <Card title="Styling Your App" icon="palette" href="/styling">
+    Learn about CSS, Tailwind, and styling best practices
+  </Card>
+
+  <Card title="Routing" icon="route" href="/routing">
+    Add navigation and multiple pages to your app
+  </Card>
+
+  <Card title="Async & Data Fetching" icon="cloud">
+    Work with APIs and asynchronous operations
+  </Card>
+
+  <Card title="Full-Stack Apps" icon="server" href="/fullstack">
+    Add server functions and backend logic
+  </Card>
+</CardGroup>
+
+## Pro Tips
+
+<Tip>
+**Hot-reload is your friend**: Make changes and see them instantly. The RSX hot-reload works for markup and styles, while the experimental `--hot-patch` flag enables Rust code hot-reload.
+</Tip>
+
+<Tip>
+**Use the community**: Join the [Dioxus Discord](https://discord.gg/XgGxMSkvUM) to ask questions, share your projects, and learn from others.
+</Tip>
+
+<Tip>
+**Check out examples**: The [Dioxus GitHub repository](https://github.com/DioxusLabs/dioxus/tree/main/examples) has dozens of examples covering advanced topics like routing, server functions, animations, and platform-specific features.
+</Tip>
+
+<Tip>
+**Read the docs**: The [official Dioxus guide](https://dioxuslabs.com/learn/0.7/) provides in-depth coverage of all features.
+</Tip>
+
+## Common Patterns
+
+### Reset State
+
+```rust
+button { 
+    onclick: move |_| count.set(0),
+    "Reset" 
+}
+```
+
+### Toggle Boolean
+
+```rust
+let mut enabled = use_signal(|| false);
+
+button { 
+    onclick: move |_| enabled.toggle(),
+    "Toggle" 
+}
+```
+
+### Input Binding
+
+```rust
+let mut text = use_signal(|| String::new());
+
+input {
+    value: "{text}",
+    oninput: move |e| text.set(e.value()),
+}
+```
+
+### Async Operations
+
+```rust
+let mut data = use_signal(|| None);
+
+use_effect(move || {
+    spawn(async move {
+        let result = fetch_data().await;
+        data.set(Some(result));
+    });
+});
+```
+
+<Success>
+You now have the foundation to build amazing cross-platform apps with Dioxus! Happy coding! 🚀
+</Success>

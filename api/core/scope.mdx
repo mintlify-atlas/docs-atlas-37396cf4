@@ -1,0 +1,421 @@
+---
+title: "Scope"
+description: "ScopeId and ScopeState for managing component context in Dioxus"
+---
+
+## Overview
+
+Scopes represent individual component instances in the virtual DOM tree. Each component has its own scope that provides context, state management, and lifecycle control.
+
+## ScopeId
+
+A unique identifier for a component scope.
+
+```rust
+pub struct ScopeId(pub usize);
+```
+
+### Constants
+
+<ParamField path="ScopeId::APP" type="ScopeId">
+  The ID of the user's root scope. This scope lasts for the entire app lifetime, making it convenient for long-lived state.
+  
+  ```rust
+  // Create a signal in the app scope
+  let global_state = Signal::new_in_scope(
+      String::new(),
+      ScopeId::APP
+  );
+  ```
+</ParamField>
+
+<ParamField path="ScopeId::ROOT" type="ScopeId">
+  The ID of the topmost scope in the tree. This is higher than `APP` because Dioxus inserts default error and suspense boundaries.
+</ParamField>
+
+<ParamField path="ScopeId::ROOT_ERROR_BOUNDARY" type="ScopeId">
+  The ID of the topmost error boundary in the tree.
+</ParamField>
+
+<ParamField path="ScopeId::ROOT_SUSPENSE_BOUNDARY" type="ScopeId">
+  The ID of the topmost suspense boundary in the tree.
+</ParamField>
+
+### Example Usage
+
+```rust
+use dioxus::prelude::*;
+
+#[component]
+fn MyComponent() -> Element {
+    // Get the current scope ID
+    let scope_id = current_scope_id().unwrap();
+    
+    // Create state in a specific scope
+    let app_state = Signal::new_in_scope(0, ScopeId::APP);
+    
+    rsx! {
+        div { "Scope ID: {scope_id:?}" }
+    }
+}
+```
+
+## ScopeState
+
+Represents a component's rendered state and provides access to the component's runtime context.
+
+```rust
+pub struct ScopeState {
+    runtime: Rc<Runtime>,
+    context_id: ScopeId,
+    last_rendered_node: Option<LastRenderedNode>,
+    props: BoxedAnyProps,
+    reactive_context: ReactiveContext,
+}
+```
+
+### Methods
+
+#### `root_node()`
+
+Gets the currently active root node for this scope.
+
+```rust
+pub fn root_node(&self) -> &VNode
+```
+
+**Panics** if the tree hasn't been built yet.
+
+```rust
+let scope = dom.get_scope(scope_id).unwrap();
+let node = scope.root_node();
+```
+
+#### `try_root_node()`
+
+Tries to get the root node, returning `None` if not built yet.
+
+```rust
+pub fn try_root_node(&self) -> Option<&VNode>
+```
+
+```rust
+if let Some(node) = scope.try_root_node() {
+    // Process node
+}
+```
+
+#### `id()`
+
+Returns the scope's ID.
+
+```rust
+pub fn id(&self) -> ScopeId
+```
+
+```rust
+let scope = dom.get_scope(scope_id).unwrap();
+let id = scope.id();
+```
+
+#### `height()`
+
+Returns the scope's height in the component tree.
+
+```rust
+pub fn height(&self) -> u32
+```
+
+The root scope has height 0, its children have height 1, etc.
+
+```rust
+let height = scope.height();
+println!("Scope depth: {}", height);
+```
+
+## Context API
+
+Scopes provide context for sharing state down the component tree without prop drilling.
+
+### Providing Context
+
+```rust
+use dioxus::prelude::*;
+
+#[derive(Clone)]
+struct Theme {
+    primary_color: String,
+    font_size: u32,
+}
+
+#[component]
+fn App() -> Element {
+    // Provide context for child components
+    provide_context(Theme {
+        primary_color: "#007bff".to_string(),
+        font_size: 16,
+    });
+    
+    rsx! {
+        ThemedButton { text: "Click me" }
+    }
+}
+```
+
+### Consuming Context
+
+```rust
+#[component]
+fn ThemedButton(text: String) -> Element {
+    // Consume context from parent
+    let theme = consume_context::<Theme>();
+    
+    rsx! {
+        button {
+            style: "color: {theme.primary_color}; font-size: {theme.font_size}px",
+            "{text}"
+        }
+    }
+}
+```
+
+### Context Functions
+
+<ResponseField name="provide_context" type="fn">
+  Provides a context value to child components.
+  
+  ```rust
+  pub fn provide_context<T: Clone + 'static>(value: T)
+  ```
+</ResponseField>
+
+<ResponseField name="consume_context" type="fn">
+  Consumes a context value from parent components. Panics if not found.
+  
+  ```rust
+  pub fn consume_context<T: Clone + 'static>() -> T
+  ```
+</ResponseField>
+
+<ResponseField name="try_consume_context" type="fn">
+  Tries to consume a context value, returning None if not found.
+  
+  ```rust
+  pub fn try_consume_context<T: Clone + 'static>() -> Option<T>
+  ```
+</ResponseField>
+
+<ResponseField name="has_context" type="fn">
+  Checks if a context value exists in parent scopes.
+  
+  ```rust
+  pub fn has_context<T: 'static>() -> bool
+  ```
+</ResponseField>
+
+## Scope Utilities
+
+### Getting Current Scope
+
+```rust
+use dioxus::prelude::*;
+
+#[component]
+fn MyComponent() -> Element {
+    let scope_id = current_scope_id().unwrap();
+    
+    rsx! {
+        div { "Current scope: {scope_id:?}" }
+    }
+}
+```
+
+### Parent Scope
+
+```rust
+use dioxus::prelude::*;
+
+#[component]
+fn ChildComponent() -> Element {
+    let parent = parent_scope();
+    
+    rsx! {
+        div { "Parent scope: {parent:?}" }
+    }
+}
+```
+
+### Owner Context
+
+```rust
+use dioxus::prelude::*;
+
+#[component]
+fn MyComponent() -> Element {
+    let owner = current_owner();
+    
+    // Run code in a specific owner context
+    with_owner(owner, || {
+        // This code runs with the owner context
+    });
+    
+    rsx! { div { "Hello" } }
+}
+```
+
+## Scheduling Updates
+
+### Manual Re-renders
+
+```rust
+use dioxus::prelude::*;
+
+#[component]
+fn MyComponent() -> Element {
+    // Schedule this component to re-render
+    schedule_update();
+    
+    rsx! { div { "Will re-render" } }
+}
+```
+
+### Schedule Any Scope
+
+```rust
+// Schedule a specific scope to re-render
+schedule_update_any(scope_id);
+```
+
+## Lifecycle Hooks
+
+### Before Render
+
+```rust
+use dioxus::prelude::*;
+
+#[component]
+fn MyComponent() -> Element {
+    use_before_render(move || {
+        println!("About to render");
+    });
+    
+    rsx! { div { "Hello" } }
+}
+```
+
+### After Render
+
+```rust
+#[component]
+fn MyComponent() -> Element {
+    use_after_render(move || {
+        println!("Finished rendering");
+    });
+    
+    rsx! { div { "Hello" } }
+}
+```
+
+### On Drop
+
+```rust
+#[component]
+fn MyComponent() -> Element {
+    use_drop(move || {
+        println!("Component unmounting");
+    });
+    
+    rsx! { div { "Hello" } }
+}
+```
+
+## Reactive Context
+
+The reactive context tracks signal subscriptions for automatic re-renders.
+
+```rust
+#[component]
+fn Counter() -> Element {
+    let mut count = use_signal(|| 0);
+    
+    // Reading count subscribes this scope to updates
+    let current = count();
+    
+    rsx! {
+        div {
+            p { "Count: {current}" }
+            button {
+                // Writing to count triggers re-render
+                onclick: move |_| count += 1,
+                "Increment"
+            }
+        }
+    }
+}
+```
+
+## Scope Hierarchy
+
+```rust
+// Root Scope (ScopeId::ROOT)
+//   ├─ Suspense Boundary (ScopeId::ROOT_SUSPENSE_BOUNDARY)
+//   │   └─ Error Boundary (ScopeId::ROOT_ERROR_BOUNDARY)
+//   │       └─ App Component (ScopeId::APP)
+//   │           ├─ Child Component (ScopeId(4))
+//   │           └─ Child Component (ScopeId(5))
+```
+
+### Traversing the Tree
+
+```rust
+use dioxus::prelude::*;
+
+fn print_scope_tree(dom: &VirtualDom, scope_id: ScopeId, depth: usize) {
+    let scope = dom.get_scope(scope_id).unwrap();
+    let indent = "  ".repeat(depth);
+    println!("{}{:?} (height: {})", indent, scope_id, scope.height());
+}
+```
+
+## Advanced Usage
+
+### Custom Scope Storage
+
+```rust
+use dioxus::prelude::*;
+
+#[derive(Clone)]
+struct ScopeData {
+    created_at: std::time::Instant,
+}
+
+#[component]
+fn MyComponent() -> Element {
+    // Store custom data in scope context
+    provide_context(ScopeData {
+        created_at: std::time::Instant::now(),
+    });
+    
+    rsx! { div { "Component initialized" } }
+}
+```
+
+### Accessing VirtualDom from Scope
+
+```rust
+// In custom renderers or advanced use cases
+let scope = dom.get_scope(scope_id).unwrap();
+let root_node = scope.root_node();
+
+// Traverse the rendered tree
+for root in &root_node.template.roots {
+    // Process template nodes
+}
+```
+
+## See Also
+
+- [Component](/api/core/component) - Creating components
+- [Element](/api/core/element) - Virtual nodes
+- [VirtualDom](/api/core/virtual-dom) - The virtual DOM engine
+- [Context Documentation](https://dioxuslabs.com/learn/0.6/reference/context)

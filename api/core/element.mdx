@@ -1,0 +1,282 @@
+---
+title: "Element"
+description: "VNode and Element types for representing virtual DOM nodes in Dioxus"
+---
+
+## Overview
+
+The Element type represents a renderable piece of UI in Dioxus. It's the return type of all components and is built from VNodes (virtual nodes) that describe the structure of the DOM.
+
+## Element Type
+
+`Element` is a type alias for `Result<VNode, RenderError>`. Components return an Element, which can either be:
+- `Ok(VNode)` - A successfully rendered node
+- `Err(RenderError)` - An error that propagates to the nearest error boundary
+
+```rust
+pub type Element = Result<VNode, RenderError>;
+```
+
+### Creating Elements
+
+```rust
+use dioxus::prelude::*;
+
+#[component]
+fn MyComponent() -> Element {
+    rsx! {
+        div { "Hello, world!" }
+    }
+}
+
+// Returning an empty element
+fn EmptyComponent() -> Element {
+    VNode::empty()
+}
+
+// Returning an error
+fn ErrorComponent() -> Element {
+    Err(RenderError::from(anyhow::anyhow!("Something went wrong")))
+}
+```
+
+## VNode
+
+`VNode` is the core virtual node type that represents a template with dynamic content.
+
+### Structure
+
+```rust
+pub struct VNode {
+    vnode: Rc<VNodeInner>,
+    mount: Cell<MountId>,
+}
+
+pub struct VNodeInner {
+    pub key: Option<String>,
+    pub template: Template,
+    pub dynamic_nodes: Box<[DynamicNode]>,
+    pub dynamic_attrs: Box<[Box<[Attribute]>]>,
+}
+```
+
+### Methods
+
+#### `VNode::empty()`
+
+Creates an element with no nodes that will be skipped during diffing.
+
+```rust
+fn render() -> Element {
+    if condition {
+        rsx! { div { "Content" } }
+    } else {
+        VNode::empty()
+    }
+}
+```
+
+#### `VNode::placeholder()`
+
+Creates a template with a single placeholder node.
+
+```rust
+let placeholder = VNode::placeholder();
+```
+
+#### `VNode::new()`
+
+Creates a new VNode with the specified template and dynamic content.
+
+```rust
+pub fn new(
+    key: Option<String>,
+    template: Template,
+    dynamic_nodes: Box<[DynamicNode]>,
+    dynamic_attrs: Box<[Box<[Attribute]>]>,
+) -> Self
+```
+
+## Template
+
+The `Template` struct describes the static structure of a UI tree. This is the core optimization in Dioxus - most UI is static and can be represented at compile time.
+
+### Structure
+
+```rust
+pub struct Template {
+    pub roots: &'static [TemplateNode],
+    pub node_paths: &'static [&'static [u8]],
+    pub attr_paths: &'static [&'static [u8]],
+}
+```
+
+### Fields
+
+<ParamField path="roots" type="&'static [TemplateNode]">
+  The list of root template nodes. Unlike React, Dioxus supports multiple roots.
+</ParamField>
+
+<ParamField path="node_paths" type="&'static [&'static [u8]]">
+  Paths to each dynamic node relative to the template root.
+</ParamField>
+
+<ParamField path="attr_paths" type="&'static [&'static [u8]]">
+  Paths to each dynamic attribute relative to the template root.
+</ParamField>
+
+## TemplateNode
+
+Represents a statically known node in the template.
+
+```rust
+pub enum TemplateNode {
+    Element {
+        tag: &'static str,
+        namespace: Option<&'static str>,
+        attrs: &'static [TemplateAttribute],
+        children: &'static [TemplateNode],
+    },
+    Text {
+        text: &'static str,
+    },
+    Dynamic {
+        id: usize,
+    },
+}
+```
+
+### Variants
+
+<ResponseField name="Element" type="struct">
+  A static HTML element with tag name, namespace, attributes, and children.
+  
+  ```rust
+  TemplateNode::Element {
+      tag: "div",
+      namespace: None,
+      attrs: &[],
+      children: &[],
+  }
+  ```
+</ResponseField>
+
+<ResponseField name="Text" type="struct">
+  A static text node.
+  
+  ```rust
+  TemplateNode::Text {
+      text: "Hello, world!",
+  }
+  ```
+</ResponseField>
+
+<ResponseField name="Dynamic" type="struct">
+  A placeholder for a dynamic node. The `id` indexes into the VNode's `dynamic_nodes` array.
+  
+  ```rust
+  TemplateNode::Dynamic { id: 0 }
+  ```
+</ResponseField>
+
+## DynamicNode
+
+Represents runtime-determined nodes in the template.
+
+```rust
+pub enum DynamicNode {
+    Component(VComponent),
+    Text(VText),
+    Placeholder(VPlaceholder),
+    Fragment(Vec<VNode>),
+}
+```
+
+### Variants
+
+<ResponseField name="Component" type="VComponent">
+  A child component with props and render function.
+</ResponseField>
+
+<ResponseField name="Text" type="VText">
+  A dynamically generated text node.
+  
+  ```rust
+  let count = 42;
+  rsx! { "{count}" } // Creates DynamicNode::Text
+  ```
+</ResponseField>
+
+<ResponseField name="Placeholder" type="VPlaceholder">
+  A placeholder used by suspense and fragments that render nothing.
+</ResponseField>
+
+<ResponseField name="Fragment" type="Vec<VNode>">
+  A list of VNodes created by conditional rendering or iterators.
+  
+  ```rust
+  rsx! {
+      for item in items {
+          div { "{item}" }
+      }
+  }
+  ```
+</ResponseField>
+
+## VText
+
+A text node with dynamic content.
+
+```rust
+pub struct VText {
+    pub value: String,
+}
+```
+
+### Methods
+
+#### `VText::new()`
+
+Creates a new text node.
+
+```rust
+let text = VText::new("Hello");
+let text_from_num = VText::new(42.to_string());
+```
+
+## Example Usage
+
+```rust
+use dioxus::prelude::*;
+
+#[component]
+fn App() -> Element {
+    let mut count = use_signal(|| 0);
+    
+    rsx! {
+        div {
+            h1 { "Counter: {count}" }
+            button {
+                onclick: move |_| count += 1,
+                "Increment"
+            }
+            // Conditional rendering
+            if count() > 5 {
+                p { "Count is greater than 5!" }
+            }
+            // List rendering
+            ul {
+                for i in 0..count() {
+                    li { key: "{i}", "Item {i}" }
+                }
+            }
+        }
+    }
+}
+```
+
+## See Also
+
+- [Component](/api/core/component) - Creating components
+- [Scope](/api/core/scope) - Component context and state
+- [VirtualDom](/api/core/virtual-dom) - The virtual DOM engine

@@ -1,0 +1,210 @@
+---
+title: 'use_context'
+description: 'Share state between components without prop drilling'
+keywords: ['context', 'provider', 'state', 'hook']
+---
+
+# use_context
+
+Consume context provided by an ancestor component. Context provides a way to share state through the component tree without passing props through every level.
+
+## Signature
+
+```rust
+pub fn use_context<T: 'static + Clone>() -> T
+```
+
+## Type Parameters
+
+<ParamField path="T" type="type" required>
+  The type of the context value. Must implement `Clone` and be `'static`. This is typically a `Signal<T>` for shared mutable state.
+</ParamField>
+
+## Returns
+
+<ResponseField name="T" type="T">
+  The context value provided by the nearest ancestor that called `use_context_provider` with the same type.
+</ResponseField>
+
+## Description
+
+Context provides a solution to prop drilling - passing data through many layers of components. Any component can provide context, and any descendant can consume it.
+
+**Key characteristics:**
+- Context values are immutable once provided
+- Use `Signal<T>` or other reactive types for mutable shared state
+- Context is scoped to the component tree - only descendants can access it
+- Type-safe: each type `T` is a separate context
+
+<Warning>
+  This function panics if no ancestor has provided context of type `T`. Use `try_use_context` if the context might not exist.
+</Warning>
+
+## Example
+
+Share theme configuration:
+
+```rust
+use dioxus::prelude::*;
+
+#[derive(Clone, Copy, PartialEq, Debug)]
+enum Theme {
+    Light,
+    Dark,
+}
+
+fn App() -> Element {
+    use_context_provider(|| Signal::new(Theme::Dark));
+
+    rsx! {
+        Parent {}
+    }
+}
+
+fn Parent() -> Element {
+    rsx! {
+        Child {}
+    }
+}
+
+#[component]
+fn Child() -> Element {
+    // Access context provided by App
+    let theme = use_context::<Signal<Theme>>();
+
+    let bg_color = match theme() {
+        Theme::Light => "white",
+        Theme::Dark => "#1a1a1a",
+    };
+
+    rsx! {
+        div {
+            style: "background: {bg_color}; padding: 20px;",
+            "Current theme: {theme:?}"
+        }
+    }
+}
+```
+
+## Example: Global state
+
+Use context with signals for app-wide state:
+
+```rust
+use dioxus::prelude::*;
+
+#[derive(Clone, Copy)]
+struct AppState {
+    count: Signal<i32>,
+    user: Signal<Option<String>>,
+}
+
+fn App() -> Element {
+    use_context_provider(|| AppState {
+        count: Signal::new(0),
+        user: Signal::new(None),
+    });
+
+    rsx! {
+        Header {}
+        Counter {}
+        UserProfile {}
+    }
+}
+
+fn Counter() -> Element {
+    let mut state = use_context::<AppState>();
+
+    rsx! {
+        button {
+            onclick: move |_| state.count += 1,
+            "Count: {state.count}"
+        }
+    }
+}
+
+fn Header() -> Element {
+    let state = use_context::<AppState>();
+
+    rsx! {
+        div {
+            "Clicks: {state.count} | User: "
+            {state.user().as_ref().unwrap_or(&"Guest".to_string())}
+        }
+    }
+}
+
+fn UserProfile() -> Element {
+    let mut state = use_context::<AppState>();
+
+    rsx! {
+        input {
+            oninput: move |evt| state.user.set(Some(evt.value())),
+            placeholder: "Enter username"
+        }
+    }
+}
+```
+
+## Related hooks
+
+### use_context_provider
+
+Provide context to descendant components:
+
+```rust
+pub fn use_context_provider<T: 'static + Clone>(f: impl FnOnce() -> T) -> T
+```
+
+<ParamField path="f" type="impl FnOnce() -> T" required>
+  Initialization function that returns the context value to provide.
+</ParamField>
+
+Example:
+
+```rust
+use_context_provider(|| Signal::new(0));
+```
+
+### try_use_context
+
+Safely attempt to consume context without panicking:
+
+```rust
+pub fn try_use_context<T: 'static + Clone>() -> Option<T>
+```
+
+Returns `None` if no ancestor has provided context of type `T`.
+
+Example:
+
+```rust
+if let Some(theme) = try_use_context::<Signal<Theme>>() {
+    // Use theme
+} else {
+    // Fallback behavior
+}
+```
+
+## Best practices
+
+<Tip>
+  Wrap `Signal<T>` in a custom type to make context more self-documenting and prevent confusion when multiple contexts are used.
+</Tip>
+
+```rust
+#[derive(Clone, Copy)]
+struct ThemeContext(Signal<Theme>);
+
+// Provider
+use_context_provider(|| ThemeContext(Signal::new(Theme::Dark)));
+
+// Consumer
+let ThemeContext(theme) = use_context::<ThemeContext>();
+```
+
+## Related
+
+- `use_signal` - Create reactive state
+- `use_coroutine` - Share async task handles via context
+- Props - Alternative to context for direct parent-child communication

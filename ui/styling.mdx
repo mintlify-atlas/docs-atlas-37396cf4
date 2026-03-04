@@ -1,0 +1,404 @@
+---
+title: Styling
+description: Learn how to style your Dioxus components with inline styles, CSS, and Tailwind
+---
+
+Dioxus provides multiple ways to style your components, from inline styles to external CSS files and CSS frameworks like Tailwind.
+
+## Inline Styles
+
+### Using the style Attribute
+
+You can apply inline styles using the `style` attribute with CSS syntax:
+
+```rust
+use dioxus::prelude::*;
+
+fn app() -> Element {
+    rsx! {
+        div {
+            style: "color: red; font-size: 20px;",
+            "Styled text"
+        }
+    }
+}
+```
+
+### Individual Style Properties
+
+Dioxus allows you to set individual CSS properties as attributes using snake_case:
+
+```rust
+rsx! {
+    div {
+        color: "blue",
+        font_size: "24px",
+        background_color: "#f0f0f0",
+        padding: "20px",
+        margin: "10px",
+        border_radius: "8px",
+        "Styled content"
+    }
+}
+```
+
+### Common Style Properties
+
+```rust
+rsx! {
+    div {
+        // Layout
+        display: "flex",
+        flex_direction: "column",
+        align_items: "center",
+        justify_content: "center",
+        
+        // Spacing
+        margin: "20px",
+        padding: "15px",
+        
+        // Colors
+        color: "#333",
+        background_color: "white",
+        
+        // Typography
+        font_size: "16px",
+        font_weight: "bold",
+        text_align: "center",
+        
+        // Borders
+        border: "1px solid #ddd",
+        border_radius: "4px",
+        
+        // Size
+        width: "100%",
+        height: "200px",
+        max_width: "800px",
+    }
+}
+```
+
+### Dynamic Styles
+
+You can use Rust expressions for dynamic styling:
+
+```rust
+fn app() -> Element {
+    let is_active = use_signal(|| true);
+    let count = use_signal(|| 0);
+    
+    rsx! {
+        div {
+            // Conditional colors
+            color: if is_active() { "green" } else { "gray" },
+            
+            // Computed values
+            font_size: "{count() + 12}px",
+            
+            // Format strings
+            padding: "{count() * 2}px",
+        }
+    }
+}
+```
+
+## CSS Classes
+
+### Using the class Attribute
+
+```rust
+rsx! {
+    div {
+        class: "container",
+        "Content"
+    }
+}
+```
+
+### Multiple Classes
+
+You can specify multiple classes by including the `class` attribute multiple times:
+
+```rust
+rsx! {
+    div {
+        class: "container",
+        class: "centered",
+        class: "shadow",
+        "Content with multiple classes"
+    }
+}
+```
+
+Dioxus automatically joins them with spaces.
+
+### Conditional Classes
+
+Use unterminated if statements for conditional classes:
+
+```rust
+fn app() -> Element {
+    let is_active = use_signal(|| true);
+    let has_error = use_signal(|| false);
+    
+    rsx! {
+        div {
+            class: "button",
+            class: if is_active() { "active" },
+            class: if has_error() { "error" },
+            "Button"
+        }
+    }
+}
+```
+
+## External CSS Files
+
+### Loading CSS with asset!
+
+Use the `asset!` macro to include CSS files:
+
+```rust
+use dioxus::prelude::*;
+
+const STYLE: Asset = asset!("/assets/style.css");
+
+fn app() -> Element {
+    rsx! {
+        Stylesheet { href: STYLE }
+        div { class: "container",
+            h1 { "Styled with external CSS" }
+        }
+    }
+}
+```
+
+Create `assets/style.css`:
+
+```css
+.container {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 20px;
+}
+
+h1 {
+    color: #333;
+    font-size: 2rem;
+}
+```
+
+## CSS Modules
+
+CSS Modules provide scoped styling to avoid naming conflicts:
+
+```rust
+use dioxus::prelude::*;
+
+fn app() -> Element {
+    #[css_module("/assets/component.css")]
+    struct Styles;
+    
+    rsx! {
+        div { class: Styles::container,
+            h1 { class: Styles::title, "Scoped Styles" }
+            p { class: Styles::text, "Content" }
+        }
+    }
+}
+```
+
+Create `assets/component.css`:
+
+```css
+.container {
+    background: #f9f9f9;
+    padding: 20px;
+}
+
+.title {
+    font-size: 24px;
+    color: #007bff;
+}
+
+.text {
+    line-height: 1.6;
+}
+```
+
+The CSS module macro converts class names to unique identifiers to avoid conflicts.
+
+### CSS Module Options
+
+You can configure CSS modules with options:
+
+```rust
+#[css_module(
+    "/assets/style.css",
+    AssetOptions::css_module()
+        .with_minify(true)
+        .with_preload(false)
+)]
+struct Styles;
+```
+
+### Global Classes
+
+To use global classes within CSS modules, prefix them with `:global`:
+
+```css
+/* This class will be scoped */
+.container {
+    padding: 20px;
+}
+
+/* This class remains global */
+:global(.global-class) {
+    margin: 0;
+}
+```
+
+## Tailwind CSS
+
+Dioxus works seamlessly with Tailwind CSS:
+
+### Setup
+
+1. Install Tailwind CSS in your project
+2. Configure `tailwind.config.js`:
+
+```javascript
+module.exports = {
+  content: [
+    "./src/**/*.{rs,html}",
+  ],
+  theme: {
+    extend: {},
+  },
+  plugins: [],
+}
+```
+
+3. Create your Tailwind CSS file:
+
+```css
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+```
+
+4. Include it in your app:
+
+```rust
+const STYLE: Asset = asset!("/assets/tailwind.css");
+
+fn app() -> Element {
+    rsx! {
+        Stylesheet { href: STYLE }
+        div { class: "container mx-auto px-4",
+            h1 { class: "text-4xl font-bold text-blue-600",
+                "Tailwind Styled"
+            }
+        }
+    }
+}
+```
+
+### Using Tailwind Classes
+
+```rust
+rsx! {
+    div { class: "min-h-screen bg-gray-100 flex items-center justify-center",
+        div { class: "bg-white rounded-lg shadow-lg p-8 max-w-md",
+            h1 { class: "text-3xl font-bold mb-4 text-gray-800",
+                "Welcome"
+            }
+            p { class: "text-gray-600 mb-6",
+                "Build amazing UIs with Dioxus and Tailwind"
+            }
+            button { class: "bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-4 rounded",
+                "Get Started"
+            }
+        }
+    }
+}
+```
+
+### Conditional Tailwind Classes
+
+```rust
+fn app() -> Element {
+    let is_active = use_signal(|| false);
+    
+    rsx! {
+        button {
+            class: "px-4 py-2 rounded font-bold",
+            class: if is_active() {
+                "bg-blue-500 text-white"
+            } else {
+                "bg-gray-200 text-gray-700"
+            },
+            onclick: move |_| is_active.toggle(),
+            "Toggle"
+        }
+    }
+}
+```
+
+## Best Practices
+
+### Component-Scoped Styles
+
+Keep styles close to components using CSS modules:
+
+```rust
+#[component]
+fn Card(title: String, content: String) -> Element {
+    #[css_module("/assets/card.css")]
+    struct Styles;
+    
+    rsx! {
+        div { class: Styles::card,
+            h2 { class: Styles::title, "{title}" }
+            p { class: Styles::content, "{content}" }
+        }
+    }
+}
+```
+
+### Responsive Design
+
+Use media queries in CSS or Tailwind's responsive utilities:
+
+```rust
+rsx! {
+    div { class: "w-full md:w-1/2 lg:w-1/3",
+        "Responsive width"
+    }
+}
+```
+
+### Style Organization
+
+1. Use inline styles for component-specific, dynamic styles
+2. Use CSS modules for component-scoped static styles
+3. Use global CSS for site-wide styles and resets
+4. Use Tailwind for utility-first styling
+
+### Performance Tips
+
+- Prefer CSS classes over inline styles for static styling
+- Use CSS modules to avoid global namespace pollution
+- Minimize dynamic style calculations
+- Use the `asset!` macro for optimal asset loading
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Events" icon="bolt" href="./events">
+    Add interactivity to your styled components
+  </Card>
+  <Card title="Assets" icon="image" href="../essentials/assets">
+    Learn more about asset management
+  </Card>
+</CardGroup>

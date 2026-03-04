@@ -1,0 +1,510 @@
+---
+title: "Extractors"
+description: "Extract request data in server functions using Axum extractors"
+---
+
+Dioxus fullstack integrates with Axum extractors to access request data in server functions. You can extract headers, cookies, query parameters, and more from the incoming HTTP request.
+
+## Extracting Request Data
+
+Use `FullstackContext::extract()` to extract Axum types inside server functions:
+
+```rust
+use dioxus::prelude::*;
+use dioxus::fullstack::FullstackContext;
+use dioxus::server::axum::{Extension, TypedHeader};
+use headers::{Authorization, Bearer};
+
+#[server]
+async fn protected_resource() -> Result<String> {
+    // Extract typed header
+    let TypedHeader(auth): TypedHeader<Authorization<Bearer>> = 
+        FullstackContext::extract().await?;
+    
+    // Extract extension data
+    let Extension(db): Extension<Database> = 
+        FullstackContext::extract().await?;
+    
+    Ok(format!("Authorized with token: {}", auth.token()))
+}
+```
+
+## FullstackContext
+
+The `FullstackContext` provides access to the current HTTP request context on the server.
+
+```rust
+pub struct FullstackContext { /* ... */ }
+```
+
+**Location**: `packages/fullstack-core/src/streaming.rs:17`
+
+### Methods
+
+#### `current()`
+
+```rust
+pub fn current() -> Option<Self>
+```
+
+Get the current `FullstackContext` if available. Returns `None` on the client or outside a request context.
+
+**Location**: `packages/fullstack-core/src/streaming.rs:156`
+
+**Example**:
+```rust
+if let Some(ctx) = FullstackContext::current() {
+    // We're on the server
+    ctx.add_response_header("X-Custom", "value");
+}
+```
+
+#### `extract()`
+
+```rust
+pub async fn extract<T: FromRequest<Self, M>, M>() -> Result<T, ServerFnError>
+```
+
+Extract an Axum extractor from the current request.
+
+**Location**: `packages/fullstack-core/src/streaming.rs:128`
+
+**Example**:
+```rust
+use dioxus::server::axum::Extension;
+
+#[server]
+async fn use_extension() -> Result<String> {
+    let Extension(config): Extension<AppConfig> = 
+        FullstackContext::extract().await?;
+    Ok(config.name.clone())
+}
+```
+
+#### `extension()`
+
+```rust
+pub fn extension<T: Clone + Send + Sync + 'static>(&self) -> Option<T>
+```
+
+Get an extension from the request without using async.
+
+**Location**: `packages/fullstack-core/src/streaming.rs:119`
+
+**Example**:
+```rust
+if let Some(ctx) = FullstackContext::current() {
+    if let Some(user_id) = ctx.extension::<UserId>() {
+        // Use user_id
+    }
+}
+```
+
+#### `parts_mut()`
+
+```rust
+pub fn parts_mut(&self) -> RwLockWriteGuard<'_, http::request::Parts>
+```
+
+Access the raw HTTP request parts mutably.
+
+**Location**: `packages/fullstack-core/src/streaming.rs:106`
+
+**Example**:
+```rust
+let ctx = FullstackContext::current().unwrap();
+let mut parts = ctx.parts_mut();
+println!("Method: {}", parts.method);
+println!("URI: {}", parts.uri);
+```
+
+#### `add_response_header()`
+
+```rust
+pub fn add_response_header(
+    &self,
+    key: impl Into<HeaderName>,
+    value: impl Into<HeaderValue>,
+)
+```
+
+Add a header to the HTTP response.
+
+**Location**: `packages/fullstack-core/src/streaming.rs:196`
+
+**Example**:
+```rust
+#[server]
+async fn with_custom_header() -> Result<String> {
+    if let Some(ctx) = FullstackContext::current() {
+        ctx.add_response_header("X-Custom-Header", "my-value");
+    }
+    Ok("Response with custom header".into())
+}
+```
+
+#### `commit_http_status()`
+
+```rust
+pub fn commit_http_status(status: StatusCode, message: Option<String>)
+```
+
+Set the HTTP status code for the response.
+
+**Location**: `packages/fullstack-core/src/streaming.rs:216`
+
+**Example**:
+```rust
+#[server]
+async fn not_found() -> Result<String> {
+    FullstackContext::commit_http_status(
+        http::StatusCode::NOT_FOUND,
+        Some("Resource not found".into()),
+    );
+    Ok(String::new())
+}
+```
+
+## Common Extractors
+
+### TypedHeader
+
+Extract typed headers using the `headers` crate:
+
+```rust
+use dioxus::server::axum::TypedHeader;
+use headers::{Authorization, Bearer, UserAgent, ContentType};
+
+#[server]
+async fn get_headers() -> Result<String> {
+    // Authorization header
+    let TypedHeader(auth): TypedHeader<Authorization<Bearer>> = 
+        FullstackContext::extract().await?;
+    
+    // User-Agent header
+    let TypedHeader(user_agent): TypedHeader<UserAgent> = 
+        FullstackContext::extract().await?;
+    
+    Ok(format!("Token: {}, UA: {}", auth.token(), user_agent.as_str()))
+}
+```
+
+Common header types:
+- `Authorization<Bearer>` - Authorization: Bearer token
+- `ContentType` - Content-Type header
+- `UserAgent` - User-Agent string
+- `Cookie` - HTTP cookies
+- `Host` - Host header
+- `Referer` - Referer header
+
+### Extension
+
+Extract shared state added via Axum extensions:
+
+```rust
+use dioxus::server::axum::{self, Extension};
+
+#[derive(Clone)]
+struct Database { /* ... */ }
+
+#[derive(Clone)]
+struct CurrentUser {
+    id: u32,
+    name: String,
+}
+
+fn main() {
+    dioxus::serve(|| async move {
+        let db = Database::connect().await?;
+        
+        let router = axum::Router::new()
+            .serve_dioxus_application(ServeConfig::new(), app)
+            .layer(Extension(db));
+        
+        Ok(router)
+    });
+}
+
+#[server]
+async fn query_db() -> Result<Vec<User>> {
+    let Extension(db): Extension<Database> = 
+        FullstackContext::extract().await?;
+    
+    db.query("SELECT * FROM users").await
+}
+
+#[server]
+async fn get_current_user() -> Result<String> {
+    let Extension(user): Extension<CurrentUser> = 
+        FullstackContext::extract().await?;
+    
+    Ok(user.name)
+}
+```
+
+### Query
+
+Extract query parameters from the URL:
+
+```rust
+use dioxus::fullstack::Query;
+use serde::Deserialize;
+
+#[derive(Deserialize)]
+struct SearchParams {
+    q: String,
+    page: Option<u32>,
+    limit: Option<u32>,
+}
+
+#[server]
+async fn search() -> Result<Vec<String>> {
+    let Query(params): Query<SearchParams> = 
+        FullstackContext::extract().await?;
+    
+    let page = params.page.unwrap_or(1);
+    let limit = params.limit.unwrap_or(10);
+    
+    Ok(vec![format!("Searching for: {} (page {})", params.q, page)])
+}
+```
+
+**Location**: `packages/fullstack/src/payloads/query.rs:12`
+
+The `Query` extractor uses `serde_qs` to support complex query structures.
+
+### Form and Multipart
+
+Extract form data:
+
+```rust
+use dioxus::fullstack::{Form, Multipart};
+use serde::Deserialize;
+
+#[derive(Deserialize)]
+struct LoginForm {
+    username: String,
+    password: String,
+}
+
+#[server]
+async fn login(form: Form<LoginForm>) -> Result<String> {
+    let LoginForm { username, password } = form.0;
+    // Validate credentials
+    Ok(format!("Logged in as {}", username))
+}
+
+#[server]
+async fn upload(multipart: Multipart) -> Result<String> {
+    // Process file upload
+    Ok("File uploaded".into())
+}
+```
+
+### Cookies
+
+Extract cookies from the request:
+
+```rust
+use dioxus::server::axum::TypedHeader;
+use headers::Cookie;
+
+#[server]
+async fn get_session() -> Result<String> {
+    let TypedHeader(cookies): TypedHeader<Cookie> = 
+        FullstackContext::extract().await?;
+    
+    if let Some(session_id) = cookies.get("session_id") {
+        Ok(format!("Session: {}", session_id))
+    } else {
+        Err(ServerFnError::new("No session cookie"))
+    }
+}
+```
+
+### JSON Body
+
+Extract and deserialize JSON from the request body:
+
+```rust
+use dioxus::server::axum::Json;
+use serde::{Deserialize, Serialize};
+
+#[derive(Deserialize, Serialize)]
+struct CreateUser {
+    name: String,
+    email: String,
+}
+
+#[server]
+async fn create_user(Json(data): Json<CreateUser>) -> Result<Json<CreateUser>> {
+    // Save to database
+    Ok(Json(data))
+}
+```
+
+## Custom Extractors
+
+You can create custom extractors by implementing `FromRequest`:
+
+```rust
+use axum_core::extract::{FromRequest, Request};
+use dioxus::fullstack::FullstackContext;
+
+struct CurrentUser {
+    id: u32,
+    name: String,
+}
+
+#[async_trait::async_trait]
+impl FromRequest<FullstackContext> for CurrentUser {
+    type Rejection = ServerFnError;
+    
+    async fn from_request(
+        req: Request,
+        state: &FullstackContext,
+    ) -> Result<Self, Self::Rejection> {
+        // Extract and validate JWT token
+        let TypedHeader(auth): TypedHeader<Authorization<Bearer>> = 
+            TypedHeader::from_request(req, state).await
+                .map_err(|_| ServerFnError::new("Missing authorization"))?;
+        
+        // Decode token
+        let user = decode_jwt(auth.token())?;
+        
+        Ok(user)
+    }
+}
+
+#[server]
+async fn protected_endpoint() -> Result<String> {
+    let user: CurrentUser = FullstackContext::extract().await?;
+    Ok(format!("Hello, {}!", user.name))
+}
+```
+
+## Request Guards
+
+Combine extractors for authorization:
+
+```rust
+use http::StatusCode;
+
+struct AdminUser(CurrentUser);
+
+#[async_trait::async_trait]
+impl FromRequest<FullstackContext> for AdminUser {
+    type Rejection = StatusCode;
+    
+    async fn from_request(
+        req: Request,
+        state: &FullstackContext,
+    ) -> Result<Self, Self::Rejection> {
+        let user: CurrentUser = CurrentUser::from_request(req, state)
+            .await
+            .map_err(|_| StatusCode::UNAUTHORIZED)?;
+        
+        if user.is_admin {
+            Ok(AdminUser(user))
+        } else {
+            Err(StatusCode::FORBIDDEN)
+        }
+    }
+}
+
+#[server]
+async fn admin_only() -> Result<String, StatusCode> {
+    let AdminUser(user) = FullstackContext::extract().await
+        .map_err(|_| StatusCode::FORBIDDEN)?;
+    
+    Ok(format!("Admin: {}", user.name))
+}
+```
+
+## Examples
+
+### Authentication Middleware
+
+```rust
+use dioxus::server::axum::{self, Extension, middleware};
+use dioxus::fullstack::FullstackContext;
+
+#[derive(Clone)]
+struct AuthenticatedUser {
+    id: u32,
+    name: String,
+}
+
+async fn auth_middleware(
+    TypedHeader(auth): TypedHeader<Authorization<Bearer>>,
+    mut request: Request,
+    next: middleware::Next,
+) -> Result<Response, StatusCode> {
+    let user = verify_token(auth.token())
+        .await
+        .map_err(|_| StatusCode::UNAUTHORIZED)?;
+    
+    request.extensions_mut().insert(user);
+    Ok(next.run(request).await)
+}
+
+fn main() {
+    dioxus::serve(|| async move {
+        let router = axum::Router::new()
+            .serve_dioxus_application(ServeConfig::new(), app)
+            .layer(middleware::from_fn(auth_middleware));
+        
+        Ok(router)
+    });
+}
+
+#[server]
+async fn get_profile() -> Result<String> {
+    let Extension(user): Extension<AuthenticatedUser> = 
+        FullstackContext::extract().await?;
+    
+    Ok(user.name)
+}
+```
+
+### Database Connection Pool
+
+```rust
+use dioxus::server::axum::Extension;
+use sqlx::{PgPool, FromRow};
+
+#[derive(Clone)]
+struct DbPool(PgPool);
+
+#[derive(FromRow)]
+struct User {
+    id: i32,
+    name: String,
+}
+
+fn main() {
+    dioxus::serve(|| async move {
+        let pool = PgPool::connect(&std::env::var("DATABASE_URL")?)
+            .await?;
+        
+        let router = axum::Router::new()
+            .serve_dioxus_application(ServeConfig::new(), app)
+            .layer(Extension(DbPool(pool)));
+        
+        Ok(router)
+    });
+}
+
+#[server]
+async fn get_user(id: i32) -> Result<User> {
+    let Extension(DbPool(pool)): Extension<DbPool> = 
+        FullstackContext::extract().await?;
+    
+    let user = sqlx::query_as::<_, User>("SELECT * FROM users WHERE id = $1")
+        .bind(id)
+        .fetch_one(&pool)
+        .await?;
+    
+    Ok(user)
+}
+```

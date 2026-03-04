@@ -1,0 +1,391 @@
+---
+title: Defining Routes
+description: Learn how to define routes using the Routable macro
+---
+
+Routes in Dioxus are defined using an enum with the `#[derive(Routable)]` macro. Each variant represents a different page or view in your application.
+
+## The Routable Macro
+
+The `#[derive(Routable)]` macro generates all the routing logic for your application:
+
+```rust
+use dioxus::prelude::*;
+
+#[derive(Routable, Clone, PartialEq)]
+enum Route {
+    #[route("/")]
+    Home {},
+    #[route("/about")]
+    About {},
+}
+```
+
+<Note>
+  Your route enum must derive `Clone` and `PartialEq` in addition to `Routable`.
+</Note>
+
+## Required Derives
+
+The route enum needs these traits:
+
+- `Routable` - Generated routing logic
+- `Clone` - Routes must be cloneable
+- `PartialEq` - For route comparison
+- `Debug` (optional) - Helpful for debugging
+
+```rust
+#[derive(Routable, Clone, PartialEq, Debug)]
+enum Route {
+    #[route("/")]
+    Home {},
+}
+```
+
+## Route Attributes
+
+### Basic Routes
+
+The `#[route()]` attribute defines the URL path:
+
+```rust
+#[derive(Routable, Clone, PartialEq)]
+enum Route {
+    #[route("/")]              // Root path
+    Home {},
+    
+    #[route("/about")]         // Static path
+    About {},
+    
+    #[route("/contact")]       // Another static path
+    Contact {},
+}
+```
+
+### Dynamic Segments
+
+Use `:name` syntax for dynamic URL segments:
+
+```rust
+#[derive(Routable, Clone, PartialEq)]
+enum Route {
+    #[route("/blog/:id")]
+    Blog { id: String },
+    
+    #[route("/user/:user_id/post/:post_id")]
+    UserPost { 
+        user_id: usize,
+        post_id: usize,
+    },
+}
+```
+
+Dynamic segments become fields in the route variant and props for the component:
+
+```rust
+#[component]
+fn Blog(id: String) -> Element {
+    rsx! { h1 { "Blog post: {id}" } }
+}
+```
+
+### Catch-All Routes
+
+Use `:..name` to capture remaining path segments:
+
+```rust
+#[derive(Routable, Clone, PartialEq)]
+enum Route {
+    #[route("/")]
+    Home {},
+    
+    // Catch all unmatched routes (404 page)
+    #[route("/:..path")]
+    NotFound { path: Vec<String> },
+}
+
+#[component]
+fn NotFound(path: Vec<String>) -> Element {
+    rsx! {
+        h1 { "404: Page Not Found" }
+        p { "Attempted path: {path:?}" }
+    }
+}
+```
+
+<Warning>
+  Place catch-all routes at the end of your enum. Routes are matched top-to-bottom.
+</Warning>
+
+### Query Parameters
+
+Capture query parameters with `?:name` syntax:
+
+```rust
+#[derive(Routable, Clone, PartialEq)]
+enum Route {
+    // Single query parameter: /search?q=rust
+    #[route("/search?:q")]
+    Search { q: String },
+    
+    // Multiple query parameters: /products?category=books&sort=price
+    #[route("/products?:category&:sort")]
+    Products { 
+        category: String,
+        sort: String,
+    },
+}
+```
+
+Query parameters must implement `FromQueryArgument` and `Display`. Most standard types already do.
+
+### Catch-All Query String
+
+Capture the entire query string with `?:..name`:
+
+```rust
+#[derive(Routable, Clone, PartialEq)]
+enum Route {
+    #[route("/search?:..query")]
+    Search { query: String },
+}
+
+// Matches /search?foo=bar&baz=qux
+// query will be "foo=bar&baz=qux"
+```
+
+### Hash Fragments
+
+Capture URL hash fragments with `#:name`:
+
+```rust
+#[derive(Routable, Clone, PartialEq)]
+enum Route {
+    #[route("/docs#:section")]
+    Docs { section: String },
+}
+
+// Matches /docs#introduction
+// section will be "introduction"
+```
+
+## Layouts and Nesting
+
+Wrap multiple routes in a shared layout component:
+
+```rust
+#[derive(Routable, Clone, PartialEq)]
+#[rustfmt::skip]
+enum Route {
+    #[layout(NavBar)]              // Start layout
+        #[route("/")]
+        Home {},
+        #[route("/about")]
+        About {},
+    #[end_layout]                  // End layout
+}
+
+#[component]
+fn NavBar() -> Element {
+    rsx! {
+        nav {
+            Link { to: Route::Home {}, "Home" }
+            Link { to: Route::About {}, "About" }
+        }
+        Outlet::<Route> {}  // Child routes render here
+    }
+}
+```
+
+<Note>
+  Use `#[rustfmt::skip]` to prevent rustfmt from reformatting your route structure.
+</Note>
+
+## Nested Routes
+
+Create URL hierarchies with `#[nest()]`:
+
+```rust
+#[derive(Routable, Clone, PartialEq)]
+#[rustfmt::skip]
+enum Route {
+    #[nest("/blog")]              // All nested routes start with /blog
+        #[route("/")]             // Matches /blog/
+        BlogList {},
+        #[route("/:id")]          // Matches /blog/:id
+        BlogPost { id: String },
+    #[end_nest]
+}
+```
+
+Combine nesting with layouts:
+
+```rust
+#[derive(Routable, Clone, PartialEq)]
+#[rustfmt::skip]
+enum Route {
+    #[nest("/blog")]
+    #[layout(BlogLayout)]          // Layout for all blog routes
+        #[route("/")]
+        BlogList {},
+        #[route("/:id")]
+        BlogPost { id: String },
+    #[end_layout]
+    #[end_nest]
+}
+
+#[component]
+fn BlogLayout() -> Element {
+    rsx! {
+        header { h1 { "My Blog" } }
+        Outlet::<Route> {}         // Blog routes render here
+        footer { "© 2024" }
+    }
+}
+```
+
+## Redirects
+
+Redirect from one route to another:
+
+```rust
+#[derive(Routable, Clone, PartialEq)]
+#[rustfmt::skip]
+enum Route {
+    #[route("/")]
+    Home {},
+    
+    // Redirect /old-home to /
+    #[redirect("/old-home", || Route::Home {})]
+    
+    // Redirect with parameters
+    #[redirect("/blog-post/:id", |id: String| Route::Blog { id })]
+    
+    #[route("/blog/:id")]
+    Blog { id: String },
+}
+```
+
+## Custom Component Names
+
+By default, routes render a component with the same name. Override this behavior:
+
+```rust
+#[derive(Routable, Clone, PartialEq)]
+enum Route {
+    #[route("/")]
+    #[component(HomePage)]  // Render `HomePage` instead of `Home`
+    Home {},
+}
+
+#[component]
+fn HomePage() -> Element {
+    rsx! { h1 { "Home" } }
+}
+```
+
+## Route Order and Matching
+
+Routes are matched from top to bottom. The first matching route wins:
+
+```rust
+#[derive(Routable, Clone, PartialEq)]
+enum Route {
+    #[route("/")]              // 1. Exact match first
+    Home {},
+    
+    #[route("/blog/new")]      // 2. Specific paths before dynamic
+    NewBlog {},
+    
+    #[route("/blog/:id")]      // 3. Dynamic segments
+    Blog { id: String },
+    
+    #[route("/:..path")]       // 4. Catch-all last
+    NotFound { path: Vec<String> },
+}
+```
+
+<Warning>
+  If you put the catch-all route first, it will match everything!
+</Warning>
+
+## Type Requirements
+
+### Path Segments
+
+Types used in path segments must implement:
+- `FromStr` - Parse from string
+- `Display` - Convert to string
+
+```rust
+// Works with standard types
+#[route("/user/:id")]
+User { id: usize },  // usize implements FromStr + Display
+
+// Custom types need FromStr + Display
+#[derive(Clone, PartialEq)]
+struct UserId(usize);
+
+impl FromStr for UserId {
+    type Err = std::num::ParseIntError;
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        Ok(UserId(s.parse()?))
+    }
+}
+
+impl Display for UserId {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+```
+
+### Query Parameters
+
+Query parameters must implement:
+- `FromQueryArgument` - Parse from query string
+- `ToQueryArgument` - Format to query string
+- `Default` - Fallback value
+
+These are auto-implemented for types with `FromStr + Display + Default`.
+
+## Complete Example
+
+```rust
+use dioxus::prelude::*;
+
+#[derive(Routable, Clone, PartialEq, Debug)]
+#[rustfmt::skip]
+enum Route {
+    // Main layout
+    #[layout(NavBar)]
+        #[route("/")]
+        Home {},
+        
+        // Blog section with its own layout
+        #[nest("/blog")]
+        #[layout(BlogLayout)]
+            #[route("/")]
+            BlogList {},
+            #[route("/:id")]
+            BlogPost { id: String },
+        #[end_layout]
+        #[end_nest]
+        
+        // Simple route
+        #[route("/about")]
+        About {},
+        
+        // Route with query params
+        #[route("/search?:q")]
+        Search { q: String },
+    #[end_layout]
+    
+    // Redirects
+    #[redirect("/home", || Route::Home {})]
+    
+    // 404 catch-all
+    #[route("/:..path")]
+    NotFound { path: Vec<String> },
+}
+```

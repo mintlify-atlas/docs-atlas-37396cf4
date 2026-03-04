@@ -1,0 +1,181 @@
+---
+title: Router Overview
+description: Introduction to routing in Dioxus applications
+---
+
+The Dioxus router provides type-safe, enum-based routing for building single-page applications with multiple views. It works across all platforms (web, desktop, mobile) and provides a familiar React Router-like API.
+
+## Key Features
+
+- **Type-safe routing** - Routes are defined as enums, catching invalid routes at compile time
+- **Nested routes** - Support for layouts and nested route structures
+- **URL parameters** - Extract dynamic segments, query parameters, and hash fragments
+- **Declarative navigation** - Use the `Link` component or programmatic navigation
+- **Cross-platform** - Works on web, desktop, mobile, and server-side rendering
+
+## Basic Setup
+
+To use routing in your application, you need three things:
+
+1. Define a `Route` enum with the `#[derive(Routable)]` macro
+2. Add a `Router` component to your app
+3. Create component functions for each route
+
+```rust
+use dioxus::prelude::*;
+
+fn main() {
+    dioxus::launch(|| rsx! { Router::<Route> {} });
+}
+
+#[derive(Routable, Clone, PartialEq)]
+enum Route {
+    #[route("/")]
+    Home {},
+    #[route("/blog/:id")]
+    Blog { id: String },
+}
+
+#[component]
+fn Home() -> Element {
+    rsx! { h1 { "Welcome home" } }
+}
+
+#[component]
+fn Blog(id: String) -> Element {
+    rsx! {
+        h1 { "Blog Post" }
+        p { "Post ID: {id}" }
+    }
+}
+```
+
+## How It Works
+
+The `#[derive(Routable)]` macro generates code that:
+
+- Parses URLs into your `Route` enum variants
+- Converts `Route` variants back into URLs
+- Renders the appropriate component for each route
+- Extracts dynamic segments into component props
+
+When the URL changes, the router:
+
+1. Parses the new URL path
+2. Matches it against your route definitions
+3. Extracts any parameters from the URL
+4. Renders the corresponding component with those parameters
+
+## Route Matching
+
+Routes are matched in the order they appear in your enum. The router tries each variant from top to bottom and uses the first match:
+
+```rust
+#[derive(Routable, Clone, PartialEq)]
+enum Route {
+    #[route("/")]           // Exact match
+    Home {},
+    
+    #[route("/blog/:id")]  // Dynamic segment
+    Blog { id: String },
+    
+    #[route("/:..path")]    // Catch-all (404)
+    NotFound { path: Vec<String> },
+}
+```
+
+<Note>
+  Place more specific routes before catch-all routes to ensure they match correctly.
+</Note>
+
+## Route Components
+
+By default, the router looks for a component with the same name as your route variant:
+
+```rust
+#[derive(Routable, Clone, PartialEq)]
+enum Route {
+    #[route("/")]
+    Home {},  // Renders the `Home` component
+}
+
+#[component]
+fn Home() -> Element {
+    rsx! { h1 { "Home" } }
+}
+```
+
+Any fields in the route variant become props for the component:
+
+```rust
+#[route("/user/:id")]
+User { id: usize },  // Renders `User` component with `id` prop
+
+#[component]
+fn User(id: usize) -> Element {
+    rsx! { h1 { "User {id}" } }
+}
+```
+
+## Navigation
+
+There are two ways to navigate between routes:
+
+### Using Link Component
+
+```rust
+rsx! {
+    Link { to: Route::Home {}, "Go Home" }
+    Link { to: Route::Blog { id: "hello".to_string() }, "Read Blog" }
+}
+```
+
+### Programmatic Navigation
+
+```rust
+#[component]
+fn MyComponent() -> Element {
+    let nav = use_navigator();
+    
+    rsx! {
+        button {
+            onclick: move |_| nav.push(Route::Home {}),
+            "Go Home"
+        }
+    }
+}
+```
+
+## Router Component Props
+
+The `Router` component accepts optional configuration:
+
+```rust
+rsx! {
+    Router::<Route> {
+        config: move || RouterConfig::default()
+    }
+}
+```
+
+Most applications just use the default configuration:
+
+```rust
+rsx! { Router::<Route> {} }
+```
+
+## Cross-Platform Support
+
+The router automatically adapts to different platforms:
+
+- **Web**: Uses browser history API and URL bar
+- **Desktop**: Uses in-memory history (no visible URL bar)
+- **Mobile**: Uses in-memory history
+- **SSR**: Supports server-side rendering and hydration
+
+## Next Steps
+
+- [Defining Routes](/routing/defining-routes) - Learn all route attribute options
+- [Navigation](/routing/navigation) - Master the Link component and programmatic navigation
+- [Nested Routes](/routing/nested-routes) - Build complex layouts with nested routing
+- [Route Parameters](/routing/route-parameters) - Extract data from URLs

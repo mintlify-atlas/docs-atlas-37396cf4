@@ -1,0 +1,102 @@
+---
+title: 'use_effect'
+description: 'Run side effects that automatically re-run when dependencies change'
+keywords: ['effect', 'side-effect', 'reactive', 'hook']
+---
+
+# use_effect
+
+Run side effects with automatic dependency tracking. The effect automatically re-runs when any signal or reactive value read inside the effect changes.
+
+## Signature
+
+```rust
+pub fn use_effect(callback: impl FnMut() + 'static) -> Effect
+```
+
+## Parameters
+
+<ParamField path="callback" type="impl FnMut() + 'static" required>
+  The effect function to run. This function is called immediately when the component mounts, and again whenever any reactive values (signals, memos, etc.) read inside the effect change.
+</ParamField>
+
+## Returns
+
+<ResponseField name="Effect" type="Effect">
+  A handle to the effect that can be used to manually trigger re-runs via `mark_dirty()`.
+</ResponseField>
+
+## Description
+
+Effects are used for side effects that need to react to state changes. The effect function runs:
+
+1. Once immediately when the component first renders
+2. Whenever any reactive value read inside the effect changes
+3. When manually triggered via `Effect::mark_dirty()`
+
+Effects track dependencies automatically - you don't need to specify a dependency array like in React.
+
+<Warning>
+  Effects should not be used to compute derived state. Use `use_memo` instead for derived values.
+</Warning>
+
+## Example
+
+Log to console whenever count changes:
+
+```rust
+use dioxus::prelude::*;
+
+fn App() -> Element {
+    let mut count = use_signal(|| 0);
+
+    use_effect(move || {
+        // This effect re-runs whenever count changes
+        println!("Count is now: {}", count());
+    });
+
+    rsx! {
+        button {
+            onclick: move |_| count += 1,
+            "Increment: {count}"
+        }
+    }
+}
+```
+
+## Example: External API synchronization
+
+Sync with local storage:
+
+```rust
+use dioxus::prelude::*;
+
+fn App() -> Element {
+    let mut username = use_signal(|| "Guest".to_string());
+
+    use_effect(move || {
+        // Save to localStorage whenever username changes
+        let value = username();
+        web_sys::window()
+            .unwrap()
+            .local_storage()
+            .unwrap()
+            .unwrap()
+            .set_item("username", &value)
+            .ok();
+    });
+
+    rsx! {
+        input {
+            value: "{username}",
+            oninput: move |evt| username.set(evt.value())
+        }
+    }
+}
+```
+
+## Related
+
+- `use_memo` - Compute derived values instead of side effects
+- `use_resource` - Async effects that return a value
+- `use_signal` - Create reactive state

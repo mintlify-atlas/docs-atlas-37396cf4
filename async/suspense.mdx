@@ -1,0 +1,419 @@
+---
+title: Suspense Boundaries
+description: Handle loading states declaratively with Suspense in Dioxus
+---
+
+# Suspense Boundaries
+
+Suspense boundaries provide a declarative way to handle loading states in your application. Instead of manually checking if data is ready in each component, you can throw loading states up to parent components that know how to handle them.
+
+## What is Suspense?
+
+Suspense allows components to "suspend" rendering while waiting for asynchronous data. When a component suspends, the nearest `SuspenseBoundary` catches it and renders a fallback UI until the data is ready.
+
+## Basic Usage
+
+```rust
+use dioxus::prelude::*;
+
+fn app() -> Element {
+    rsx! {
+        SuspenseBoundary {
+            fallback: |_| rsx! { "Loading..." },
+            AsyncComponent {}
+        }
+    }
+}
+
+#[component]
+fn AsyncComponent() -> Element {
+    let data = use_resource(|| async move {
+        fetch_data().await
+    });
+    
+    // Suspend if data isn't ready
+    let data = data.suspend()?;
+    
+    rsx! {
+        div { "Data: {data}" }
+    }
+}
+```
+
+## The `.suspend()` Method
+
+The key to suspense is the `.suspend()` method on resources. It does two things:
+
+1. **If the resource is ready** - Returns the value
+2. **If the resource is pending** - Throws a suspension error that bubbles up to the nearest `SuspenseBoundary`
+
+```rust
+let resource = use_resource(|| async move {
+    fetch_data().await
+});
+
+// This suspends rendering if data isn't ready
+let data = resource.suspend()?;
+
+// Code here only runs when data is ready
+rsx! { "Got data: {data}" }
+```
+
+## Suspense Boundary Props
+
+### Fallback
+
+The `fallback` prop receives a `SuspenseContext` and returns the UI to show while suspended:
+
+```rust
+SuspenseBoundary {
+    fallback: |context| rsx! {
+        div { class: "loading-spinner",
+            "Loading {context.suspended_futures().len()} items..."
+        }
+    },
+    MyAsyncComponents {}
+}
+```
+
+### Children
+
+Any children under a `SuspenseBoundary` can suspend:
+
+```rust
+SuspenseBoundary {
+    fallback: |_| rsx! { "Loading..." },
+    UserProfile {}  // Can suspend
+    UserPosts {}    // Can suspend
+    UserComments {} // Can suspend
+}
+```
+
+If any child suspends, the entire boundary shows the fallback.
+
+## Combining with Error Boundaries
+
+For robust error handling, combine `SuspenseBoundary` with `ErrorBoundary`:
+
+```rust
+fn app() -> Element {
+    rsx! {
+        ErrorBoundary {
+            handle_error: |error| rsx! {
+                div { class: "error",
+                    "Error: {error}"
+                }
+            },
+            SuspenseBoundary {
+                fallback: |_| rsx! { "Loading..." },
+                AsyncContent {}
+            }
+        }
+    }
+}
+```
+
+Order matters:
+- `ErrorBoundary` wraps `SuspenseBoundary` to catch errors
+- `SuspenseBoundary` catches loading states
+- Children can throw either errors or suspensions
+
+## Practical Example: Dog Photo Fetcher
+
+```rust
+use dioxus::prelude::*;
+
+fn app() -> Element {
+    rsx! {
+        div {
+            h1 { "Dogs are very important" }
+            p {
+                "The dog or domestic dog is a domesticated descendant "
+                "of the wolf characterized by an upturning tail."
+            }
+            h3 { "Illustrious Dog Photo" }
+            
+            ErrorBoundary {
+                handle_error: |_| rsx! { 
+                    p { "Error loading doggos" } 
+                },
+                SuspenseBoundary {
+                    fallback: |_| rsx! { "Loading doggos..." },
+                    Doggo {}
+                }
+            }
+        }
+    }
+}
+
+#[component]
+fn Doggo() -> Element {
+    #[derive(serde::Deserialize)]
+    struct DogApi {
+        message: String,
+    }
+    
+    let mut dog = use_resource(|| async move {
+        reqwest::get("https://dog.ceo/api/breeds/image/random")
+            .await?
+            .json::<DogApi>()
+            .await
+    });
+    
+    // Suspend until the dog image is loaded
+    let dog_url = dog.suspend()?;
+    
+    rsx! {
+        div {
+            button { 
+                onclick: move |_| dog.restart(), 
+                "Click to fetch another doggo" 
+            }
+            img {
+                src: "{dog_url.message}",
+                max_width: "500px",
+                max_height: "500px"
+            }
+        }
+    }
+}
+```
+
+## Nested Suspense Boundaries
+
+You can nest suspense boundaries for granular loading states:
+
+```rust
+fn Dashboard() -> Element {
+    rsx! {
+        div {
+            h1 { "Dashboard" }
+            
+            // Suspense for user info
+            SuspenseBoundary {
+                fallback: |_| rsx! { "Loading user..." },
+                UserInfo {}
+            }
+            
+            // Separate suspense for posts
+            SuspenseBoundary {
+                fallback: |_| rsx! { "Loading posts..." },
+                PostsList {}
+            }
+            
+            // And another for comments
+            SuspenseBoundary {
+                fallback: |_| rsx! { "Loading comments..." },
+                CommentsList {}
+            }
+        }
+    }
+}
+```
+
+Each section loads independently with its own loading state.
+
+## SuspenseContext API
+
+The `SuspenseContext` passed to the fallback provides useful information:
+
+```rust
+SuspenseBoundary {
+    fallback: |context| {
+        let num_suspended = context.suspended_futures().len();
+        let is_suspended = context.is_suspended();
+        let has_tasks = context.has_suspended_tasks();
+        
+        rsx! {
+            div {
+                "Loading {num_suspended} items..."
+                if is_suspended {
+                    "(Suspended)"
+                }
+            }
+        }
+    },
+    MyContent {}
+}
+```
+
+### Methods
+
+- **`suspended_futures()`** - List of all suspended futures
+- **`is_suspended()`** - Whether the boundary is currently showing fallback
+- **`has_suspended_tasks()`** - Whether there are any suspended tasks
+- **`after_suspense_resolved()`** - Run a callback when suspense resolves
+
+## Server-Side Rendering with Suspense
+
+Suspense works seamlessly with SSR:
+
+### On the Server:
+1. Initial render with loading placeholders
+2. Poll suspended futures
+3. Stream completed components to the client as they resolve
+
+### On the Client:
+1. Hydrate with initial placeholders
+2. Receive streamed updates from server
+3. Replace placeholders with real content
+
+```rust
+// Works automatically with SSR
+fn app() -> Element {
+    rsx! {
+        SuspenseBoundary {
+            fallback: |_| rsx! { "Loading..." },
+            // This component is streamed when ready
+            SlowData {}
+        }
+    }
+}
+```
+
+## Advanced: Freezing Suspense
+
+On the server, you can freeze a suspense boundary to prevent re-renders:
+
+```rust
+let context = /* get suspense context */;
+context.freeze();
+```
+
+This is useful for optimization but generally handled automatically.
+
+## Suspense Best Practices
+
+### 1. Granular Boundaries
+
+Use multiple small boundaries instead of one large one:
+
+```rust
+// ✅ Good - Granular loading
+rsx! {
+    SuspenseBoundary { fallback: |_| rsx! { "Loading header..." }, Header {} }
+    SuspenseBoundary { fallback: |_| rsx! { "Loading content..." }, Content {} }
+    SuspenseBoundary { fallback: |_| rsx! { "Loading footer..." }, Footer {} }
+}
+
+// ❌ Less ideal - Everything loads together
+rsx! {
+    SuspenseBoundary {
+        fallback: |_| rsx! { "Loading everything..." },
+        Header {}
+        Content {}
+        Footer {}
+    }
+}
+```
+
+### 2. Informative Fallbacks
+
+Provide context in your loading states:
+
+```rust
+SuspenseBoundary {
+    fallback: |context| rsx! {
+        div { class: "loading",
+            LoadingSpinner {}
+            "Fetching {context.suspended_futures().len()} items..."
+        }
+    },
+    MyContent {}
+}
+```
+
+### 3. Combine with Error Boundaries
+
+Always wrap suspense with error boundaries:
+
+```rust
+ErrorBoundary {
+    handle_error: |e| rsx! { "Error: {e}" },
+    SuspenseBoundary {
+        fallback: |_| rsx! { "Loading..." },
+        Content {}
+    }
+}
+```
+
+### 4. Non-Stateful Fallbacks
+
+Keep fallback UI simple and stateless for SSR compatibility:
+
+```rust
+// ✅ Good - Stateless fallback
+fallback: |_| rsx! { div { "Loading..." } }
+
+// ⚠️ Careful - Stateful fallback may cause hydration issues
+fallback: |_| {
+    let mut count = use_signal(|| 0);
+    rsx! { "Loading... {count}" }
+}
+```
+
+## Common Patterns
+
+### Progressive Loading
+
+Show basic content first, then details:
+
+```rust
+rsx! {
+    div {
+        // Always show this
+        h1 { "User Profile" }
+        
+        // Load basic info
+        SuspenseBoundary {
+            fallback: |_| rsx! { "Loading profile..." },
+            BasicProfile {}
+        }
+        
+        // Load detailed data
+        SuspenseBoundary {
+            fallback: |_| rsx! { "Loading details..." },
+            DetailedInfo {}
+        }
+    }
+}
+```
+
+### Skeleton Screens
+
+Use skeleton components as fallbacks:
+
+```rust
+SuspenseBoundary {
+    fallback: |_| rsx! {
+        div { class: "skeleton-profile",
+            div { class: "skeleton-avatar" }
+            div { class: "skeleton-name" }
+            div { class: "skeleton-bio" }
+        }
+    },
+    UserProfile {}
+}
+```
+
+## Debugging Suspense
+
+If your suspense isn't working:
+
+1. **Check `.suspend()` calls** - Make sure you're calling `.suspend()` on resources
+2. **Verify boundary placement** - Ensure `SuspenseBoundary` is an ancestor
+3. **Check error boundaries** - Errors might be caught before suspension
+4. **Inspect context** - Use the `SuspenseContext` to debug state
+
+```rust
+fallback: |context| {
+    tracing::info!("Suspended futures: {:?}", context.suspended_futures());
+    rsx! { "Loading..." }
+}
+```
+
+## Next Steps
+
+- Learn about [Error Handling](/async/error-handling) for robust apps
+- Understand [use_resource](/async/use-resource) for data fetching
+- See [Futures](/async/futures) for background tasks

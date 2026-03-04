@@ -1,0 +1,503 @@
+---
+title: Hydration
+description: Understand how Dioxus takes over server-rendered HTML on the client
+---
+
+Hydration is the process where the client-side Dioxus application takes over the server-rendered HTML, attaching event listeners and making the page interactive without re-rendering.
+
+## What is Hydration?
+
+When a page is server-side rendered:
+
+1. **Server**: Renders component tree to HTML and embeds state
+2. **Browser**: Displays static HTML immediately
+3. **WASM loads**: Client code downloads and initializes
+4. **Hydration**: Client "hydrates" the DOM, attaching interactivity
+
+```rust
+use dioxus::prelude::*;
+
+fn app() -> Element {
+    let mut count = use_signal(|| 0);
+    
+    rsx! {
+        // Server renders: <button>Count: 0</button>
+        // Client hydrates: attaches onclick handler
+        button { 
+            onclick: move |_| count += 1,
+            "Count: {count}" 
+        }
+    }
+}
+```
+
+## How Hydration Works
+
+### Server-Side
+
+1. **Render Components**: VirtualDom renders to HTML
+2. **Collect State**: Hooks like `use_signal`, `use_server_future` serialize their data
+3. **Embed Data**: State embedded in HTML as base64-encoded CBOR
+4. **Add IDs**: Elements get `data-node-id` attributes
+
+```html
+<!DOCTYPE html>
+<html>
+<body>
+    <div id="main">
+        <button data-node-id="1">Count: 0</button>
+    </div>
+    <script>
+        window.__DIOXUS_HYDRATION_DATA__ = "<base64-encoded-data>";
+    </script>
+    <script src="/assets/main.js"></script>
+</body>
+</html>
+```
+
+### Client-Side
+
+1. **Parse Hydration Data**: Read `window.__DIOXUS_HYDRATION_DATA__`
+2. **Create VirtualDom**: Build same component tree
+3. **Restore State**: Hooks read cached values
+4. **Match Nodes**: Map virtual nodes to real DOM
+5. **Attach Handlers**: Add event listeners
+
+```rust
+// On the client, this reads cached data instead of calling the server
+let data = use_server_future(|| async {
+    fetch_data().await // Only runs on server
+});
+```
+
+## Hydration Context
+
+Dioxus automatically manages a `HydrationContext` that stores serialized state:
+
+```rust
+// Server: stores data
+context.insert(key, serialized_value);
+
+// Client: retrieves data  
+let value = context.get(key)?;
+```
+
+You typically don't interact with this directly - hooks handle it automatically.
+
+## Hydration-Aware Hooks
+
+Several hooks are designed for hydration:
+
+### `use_server_future`
+
+Runs on server, caches result for client:
+
+```rust
+fn user_profile(id: u32) -> Element {
+    let user = use_server_future(move || async move {
+        // This runs on the server during SSR
+        // Result is serialized and sent to client
+        get_user(id).await
+    });
+    
+    rsx! {
+        match user() {
+            Some(Ok(user)) => rsx! { h1 { "{user.name}" } },
+            Some(Err(e)) => rsx! { "Error: {e}" },
+            None => rsx! { "Loading..." },
+        }
+    }
+}
+```
+
+On the server:
+1. Future executes
+2. Result serialized to hydration data
+3. HTML rendered with result
+
+On the client:
+1. Future doesn't execute
+2. Result read from hydration data
+3. No server request needed
+
+### `use_server_cached`
+
+Cache computed values:
+
+```rust
+fn expensive_component() -> Element {
+    let result = use_server_cached(move || async move {
+        // Expensive computation on server
+        compute_expensive_value().await
+    });
+    
+    rsx! { "{result:?}" }
+}
+```
+
+### `use_signal` with Initial Value
+
+Signals hydrate their initial values:
+
+```rust
+fn counter() -> Element {
+    // Server: initializes to 0, serializes
+    // Client: reads 0 from hydration data
+    let mut count = use_signal(|| 0);
+    
+    rsx! {
+        button { onclick: move |_| count += 1, "Count: {count}" }
+    }
+}
+```
+
+## Hydration Mismatches
+
+Hydration fails if server and client render differently:
+
+### Common Causes
+
+**❌ Random values**
+```rust
+fn bad() -> Element {
+    let random = rand::random::<u32>(); // Different on server/client!
+    rsx! { "Random: {random}" }
+}
+```
+
+**❌ Current time**
+```rust
+fn bad() -> Element {
+    let now = std::time::SystemTime::now(); // Different on server/client!
+    rsx! { "Time: {now:?}" }
+}
+```
+
+**❌ Browser APIs**
+```rust
+fn bad() -> Element {
+    // window only exists in browser!
+    let width = window().inner_width();
+    rsx! { "Width: {width}" }
+}
+```
+
+### Solutions
+
+**✅ Use effects for client-only code**
+```rust
+fn good() -> Element {
+    let mut time = use_signal(|| "Loading...".to_string());
+    
+    use_effect(move || {
+        // Runs only on client after hydration
+        time.set(format!("{:?}", std::time::SystemTime::now()));
+    });
+    
+    rsx! { "Time: {time}" }
+}
+```
+
+**✅ Feature-gate browser code**
+```rust
+fn good() -> Element {
+    let mut width = use_signal(|| 0);
+    
+    use_effect(move || {
+        #[cfg(target_arch = "wasm32")]
+        {
+            width.set(window().inner_width());
+        }
+    });
+    
+    rsx! { "Width: {width}px" }
+}
+```
+
+**✅ Use server data**
+```rust
+fn good() -> Element {
+    let data = use_server_future(|| async {
+        // Deterministic - same on server and client
+        Ok("Server data".to_string())
+    });
+    
+    rsx! { "{data():?}" }
+}
+```
+
+## Controlling Hydration
+
+### Skip Hydration for Elements
+
+Some content doesn't need hydration:
+
+```rust
+rsx! {
+    // Static content - no interactivity needed
+    article { 
+        dangerous_inner_html: "<p>Static HTML content</p>" 
+    }
+}
+```
+
+### Conditional Rendering
+
+Handle differences between server and client:
+
+```rust
+fn component() -> Element {
+    let is_server = cfg!(feature = "server");
+    
+    rsx! {
+        if is_server {
+            // Server-only view
+            div { "Rendered on server" }
+        } else {
+            // Client-only view  
+            div { "Rendered on client" }
+        }
+    }
+}
+```
+
+## Testing Hydration
+
+### Verify Deterministic Rendering
+
+Ensure server and client produce identical output:
+
+```rust
+#[cfg(test)]
+mod tests {
+    use super::*;
+    
+    #[test]
+    fn test_deterministic() {
+        let html1 = dioxus_ssr::render_element(rsx! { app {} });
+        let html2 = dioxus_ssr::render_element(rsx! { app {} });
+        assert_eq!(html1, html2);
+    }
+}
+```
+
+### Manual Hydration Test
+
+```rust
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn test_hydration() {
+        // Render on "server"
+        let mut server_dom = VirtualDom::new(app);
+        server_dom.rebuild_in_place();
+        let server_html = dioxus_ssr::render(&server_dom);
+        
+        // Simulate client hydration
+        let mut client_dom = VirtualDom::new(app);
+        // In a real scenario, hydration data would be passed here
+        client_dom.rebuild_in_place();
+        
+        // Compare structures
+        // (detailed comparison would need access to internals)
+    }
+}
+```
+
+## Performance Considerations
+
+### Hydration Data Size
+
+Large state increases HTML size. Minimize hydration data:
+
+```rust
+// ❌ Bad - serializes large data
+fn bad() -> Element {
+    let huge_data = use_server_future(|| async {
+        Ok(vec![0u8; 1_000_000]) // 1MB serialized!
+    });
+    rsx! { "Data loaded" }
+}
+
+// ✅ Good - only serialize what's needed
+fn good() -> Element {
+    let summary = use_server_future(|| async {
+        let data = load_huge_data().await?;
+        Ok(data.len()) // Just the count
+    });
+    rsx! { "Loaded {summary():?} items" }
+}
+```
+
+### Hydration Timing
+
+Hydration blocks interactivity. Optimize by:
+
+1. **Reduce JavaScript size**: Smaller WASM = faster hydration
+2. **Use code splitting**: Load only what's needed
+3. **Defer non-critical hydration**: Use `use_effect` for delayed work
+
+```rust
+fn app() -> Element {
+    rsx! {
+        // Critical content - hydrates immediately
+        Header {}
+        MainContent {}
+        
+        // Non-critical - hydrates in background
+        LazyFooter {}
+    }
+}
+
+fn LazyFooter() -> Element {
+    let mut loaded = use_signal(|| false);
+    
+    use_effect(move || {
+        // Load after hydration
+        spawn(async move {
+            tokio::time::sleep(Duration::from_millis(100)).await;
+            loaded.set(true);
+        });
+    });
+    
+    if !loaded() {
+        return rsx! { div { "Loading footer..." } };
+    }
+    
+    rsx! { footer { "Footer content" } }
+}
+```
+
+## Debugging Hydration
+
+### Enable Logging
+
+Dioxus logs hydration events:
+
+```rust
+#[cfg(target_arch = "wasm32")]
+fn main() {
+    // Enable console logging
+    wasm_logger::init(wasm_logger::Config::default());
+    dioxus::launch(app);
+}
+```
+
+### Inspect Hydration Data
+
+View hydration data in the browser console:
+
+```javascript
+// In browser console
+console.log(window.__DIOXUS_HYDRATION_DATA__);
+```
+
+### Check Node IDs
+
+Inspect `data-node-id` attributes in the rendered HTML to verify hydration markers are present.
+
+## Advanced Patterns
+
+### Partial Hydration
+
+Hydrate only interactive parts:
+
+```rust
+fn app() -> Element {
+    rsx! {
+        // Static content - no hydration
+        article { dangerous_inner_html: "<p>Static content</p>" }
+        
+        // Interactive - needs hydration
+        div { InteractiveComponent {} }
+    }
+}
+```
+
+### Progressive Hydration
+
+Hydrate in priority order:
+
+```rust
+fn app() -> Element {
+    rsx! {
+        // High priority - hydrate first
+        CriticalComponent {}
+        
+        // Low priority - hydrate later
+        Suspense {
+            fallback: |_| rsx! { "Loading..." },
+            NonCriticalComponent {}
+        }
+    }
+}
+```
+
+### Streaming with Hydration
+
+Stream HTML while hydrating earlier parts:
+
+```rust
+fn app() -> Element {
+    rsx! {
+        div { "Header" }
+        Suspense {
+            fallback: |_| rsx! { "Loading..." },
+            SlowComponent {} // Streams in later
+        }
+    }
+}
+```
+
+See `examples/07-fullstack/streaming.rs`.
+
+## Best Practices
+
+1. **Keep rendering deterministic** - same inputs produce same outputs
+2. **Use `use_effect` for client-only code** - browser APIs, timers, randomness
+3. **Minimize hydration data** - only serialize what's needed
+4. **Test both server and client** - ensure consistent rendering
+5. **Use server futures wisely** - cache expensive operations
+6. **Handle hydration errors gracefully** - provide fallbacks
+7. **Monitor hydration performance** - use browser dev tools
+
+## Common Issues
+
+### Hydration Mismatch Errors
+
+```
+Error: Hydration mismatch - server and client rendered different content
+```
+
+**Solution**: Ensure deterministic rendering. Check for:
+- Random values
+- Current time
+- Browser APIs used during initial render
+
+### Missing Hydration Data
+
+```
+Error: Hydration data not found for key
+```
+
+**Solution**: Ensure server is rendering with hydration enabled:
+
+```rust
+let mut renderer = Renderer::new();
+renderer.pre_render = true; // Enable hydration markers
+```
+
+### Slow Hydration
+
+**Solution**: 
+- Reduce WASM bundle size
+- Split code
+- Defer non-critical hydration
+- Use streaming SSR
+
+## Examples
+
+- `examples/07-fullstack/fullstack_hello_world.rs` - Basic hydration
+- `examples/07-fullstack/server_functions.rs` - Server data hydration
+- `examples/playwright-tests/fullstack-hydration-order` - Hydration order tests
+- `examples/07-fullstack/streaming.rs` - Streaming with hydration

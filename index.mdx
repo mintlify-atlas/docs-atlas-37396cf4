@@ -1,97 +1,310 @@
 ---
-title: "Introduction"
-description: "Welcome to the new home for your documentation"
+title: "Dioxus Documentation"
+description: "Fullstack app framework for web, desktop, and mobile built with Rust"
+mode: "custom"
 ---
 
-## Setting up
+<div className="relative overflow-hidden bg-gradient-to-br from-[#FF6B35] to-[#E85A2F] dark:from-[#E85A2F] dark:to-[#FF6B35] py-20">
+  <div className="max-w-6xl mx-auto px-6 lg:px-8">
+    <div className="grid lg:grid-cols-12 gap-8 items-center">
+      <div className="lg:col-span-7">
+        <h1 className="text-5xl lg:text-6xl font-bold text-white mb-6">
+          Build apps for any platform with Rust
+        </h1>
+        <p className="text-xl text-white/90 mb-8 max-w-2xl">
+          Dioxus is a fullstack framework for building cross-platform apps with a single codebase. Write React-like components in Rust and deploy to web, desktop, mobile, and more.
+        </p>
+        <div className="flex flex-wrap gap-4">
+          <a
+            href="/quickstart"
+            className="inline-flex items-center px-6 py-3 rounded-lg bg-white text-[#FF6B35] font-semibold hover:bg-gray-100 transition-colors no-underline"
+          >
+            Get Started
+          </a>
+          <a
+            href="/introduction"
+            className="inline-flex items-center px-6 py-3 rounded-lg border border-white/30 bg-white/10 text-white font-semibold hover:bg-white/20 transition-colors no-underline"
+          >
+            Learn More
+          </a>
+        </div>
+      </div>
+      <div className="lg:col-span-5">
+        <div className="relative">
+          <div className="bg-[#1a1d27] dark:bg-[#0f1117] rounded-lg p-6 border border-white/10">
+            <div className="flex items-center gap-2 mb-4">
+              <div className="w-3 h-3 rounded-full bg-red-500"></div>
+              <div className="w-3 h-3 rounded-full bg-yellow-500"></div>
+              <div className="w-3 h-3 rounded-full bg-green-500"></div>
+            </div>
+            <pre className="text-sm text-gray-300 overflow-x-auto">
+              <code>{`fn app() -> Element {
+    let mut count = use_signal(|| 0);
 
-Get your documentation site up and running in minutes.
+    rsx! {
+        h1 { "Count: {count}" }
+        button {
+            onclick: move |_| count += 1,
+            "Increment"
+        }
+    }
+}`}</code>
+            </pre>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
 
-<Card
-  title="Start here"
-  icon="rocket"
-  href="/quickstart"
-  horizontal
->
-  Follow our three step quickstart guide.
-</Card>
+<div className="mt-16 mb-16 max-w-5xl mx-auto px-6">
+  <div className="text-center mb-12">
+    <h2 className="text-3xl font-bold text-gray-900 dark:text-white mb-4">
+      Quick Start
+    </h2>
+    <p className="text-lg text-gray-600 dark:text-gray-400">
+      Get up and running with Dioxus in minutes
+    </p>
+  </div>
 
-## Make it yours
+  <Steps>
+    <Step title="Install the Dioxus CLI">
+      Install the Dioxus CLI tool using cargo:
 
-Design a docs site that looks great and empowers your users.
+      ```bash
+      cargo install dioxus-cli
+      ```
 
-<Columns cols={2}>
-  <Card
-    title="Edit locally"
-    icon="pen-to-square"
-    href="/development"
-  >
-    Edit your docs locally and preview them in real time.
-  </Card>
-  <Card
-    title="Customize your site"
-    icon="palette"
-    href="/essentials/settings"
-  >
-    Customize the design and colors of your site to match your brand.
-  </Card>
+      The CLI provides hot-reload, bundling, and cross-platform building capabilities.
+    </Step>
+
+    <Step title="Create a new project">
+      Use the CLI to scaffold a new Dioxus project:
+
+      ```bash
+      dx new my-app
+      cd my-app
+      ```
+
+      This creates a new project with all the necessary configuration files.
+    </Step>
+
+    <Step title="Run your app">
+      Start the development server with hot-reload:
+
+      ```bash
+      dx serve
+      ```
+
+      Your app will open in a window. Edit your code and see changes instantly without losing state.
+    </Step>
+  </Steps>
+</div>
+
+<div className="mt-16 mb-16 max-w-5xl mx-auto px-6">
+  <div className="text-center mb-12">
+    <h2 className="text-3xl font-bold text-gray-900 dark:text-white mb-4">
+      Explore by Platform
+    </h2>
+    <p className="text-lg text-gray-600 dark:text-gray-400">
+      Build for any platform with the same codebase
+    </p>
+  </div>
+
+  <CardGroup cols={3}>
     <Card
-    title="Set up navigation"
-    icon="map"
-    href="/essentials/navigation"
-  >
-    Organize your docs to help users find what they need and succeed with your product.
-  </Card>
-  <Card
-    title="API documentation"
-    icon="terminal"
-    href="/api-reference/introduction"
-  >
-    Auto-generate API documentation from OpenAPI specifications.
-  </Card>
-</Columns>
+      title="Web"
+      icon="globe"
+      href="/platforms/web"
+    >
+      Build fast, interactive web apps with WebAssembly
+    </Card>
+    <Card
+      title="Desktop"
+      icon="desktop"
+      href="/platforms/desktop"
+    >
+      Native desktop apps for Windows, macOS, and Linux
+    </Card>
+    <Card
+      title="Mobile"
+      icon="mobile"
+      href="/platforms/mobile"
+    >
+      iOS and Android apps with native performance
+    </Card>
+    <Card
+      title="Native Rendering"
+      icon="paintbrush"
+      href="/platforms/native"
+    >
+      GPU-accelerated native rendering with WGPU
+    </Card>
+    <Card
+      title="Fullstack"
+      icon="server"
+      href="/fullstack/overview"
+    >
+      Server-side rendering and server functions
+    </Card>
+    <Card
+      title="LiveView"
+      icon="bolt"
+      href="/platforms/liveview"
+    >
+      Server-rendered apps with WebSocket streaming
+    </Card>
+  </CardGroup>
+</div>
 
-## Create beautiful pages
+<div className="mt-16 mb-16 max-w-5xl mx-auto px-6">
+  <div className="text-center mb-12">
+    <h2 className="text-3xl font-bold text-gray-900 dark:text-white mb-4">
+      Key Features
+    </h2>
+    <p className="text-lg text-gray-600 dark:text-gray-400">
+      Everything you need to build modern applications
+    </p>
+  </div>
 
-Everything you need to create world-class documentation.
+  <CardGroup cols={2}>
+    <Card
+      title="React-like Components"
+      icon="layer-group"
+      href="/concepts/components"
+    >
+      Familiar component model with RSX syntax for declaring UI
+    </Card>
+    <Card
+      title="Signals & State"
+      icon="wave-pulse"
+      href="/concepts/signals"
+    >
+      Fine-grained reactivity with signals-based state management
+    </Card>
+    <Card
+      title="Type-safe Routing"
+      icon="route"
+      href="/routing/overview"
+    >
+      Compile-time checked routes with automatic route generation
+    </Card>
+    <Card
+      title="Hot Reload"
+      icon="fire"
+      href="/cli/hot-reload"
+    >
+      Instant updates with RSX hot-reload and Rust hot-patching
+    </Card>
+    <Card
+      title="Server Functions"
+      icon="function"
+      href="/fullstack/server-functions"
+    >
+      Call server code from the client with full type safety
+    </Card>
+    <Card
+      title="Asset Management"
+      icon="images"
+      href="/advanced/assets"
+    >
+      Optimized asset bundling with automatic format conversion
+    </Card>
+  </CardGroup>
+</div>
 
-<Columns cols={2}>
-  <Card
-    title="Write with MDX"
-    icon="pen-fancy"
-    href="/essentials/markdown"
-  >
-    Use MDX to style your docs pages.
-  </Card>
-  <Card
-    title="Code samples"
-    icon="code"
-    href="/essentials/code"
-  >
-    Add sample code to demonstrate how to use your product.
-  </Card>
-  <Card
-    title="Images"
-    icon="image"
-    href="/essentials/images"
-  >
-    Display images and other media.
-  </Card>
-  <Card
-    title="Reusable snippets"
-    icon="recycle"
-    href="/essentials/reusable-snippets"
-  >
-    Write once and reuse across your docs.
-  </Card>
-</Columns>
+<div className="mt-16 mb-16 max-w-5xl mx-auto px-6">
+  <div className="text-center mb-12">
+    <h2 className="text-3xl font-bold text-gray-900 dark:text-white mb-4">
+      Learn the Fundamentals
+    </h2>
+    <p className="text-lg text-gray-600 dark:text-gray-400">
+      Master the core concepts of Dioxus development
+    </p>
+  </div>
 
-## Need inspiration?
+  <CardGroup cols={2}>
+    <Card
+      title="Components & Props"
+      icon="cube"
+      href="/concepts/components"
+    >
+      Learn how to build reusable components with props
+    </Card>
+    <Card
+      title="RSX Syntax"
+      icon="code"
+      href="/concepts/rsx"
+    >
+      Understand the RSX macro for declaring UI
+    </Card>
+    <Card
+      title="Hooks"
+      icon="link"
+      href="/concepts/hooks"
+    >
+      Use hooks to manage component lifecycle and side effects
+    </Card>
+    <Card
+      title="Async & Suspense"
+      icon="spinner"
+      href="/async/suspense"
+    >
+      Handle asynchronous data loading with suspense
+    </Card>
+  </CardGroup>
+</div>
 
-<Card
-  title="See complete examples"
-  icon="stars"
-  href="https://mintlify.com/customers"
->
-  Browse our showcase of exceptional documentation sites.
-</Card>
+<div className="mt-16 mb-16 max-w-5xl mx-auto px-6">
+  <div className="bg-gradient-to-br from-[#FF6B35]/10 to-[#E85A2F]/10 dark:from-[#E85A2F]/20 dark:to-[#FF6B35]/20 rounded-2xl p-8 md:p-12 border border-[#FF6B35]/20 dark:border-[#E85A2F]/30">
+    <div className="max-w-3xl mx-auto text-center">
+      <h2 className="text-3xl font-bold text-gray-900 dark:text-white mb-4">
+        Ready to build your first app?
+      </h2>
+      <p className="text-lg text-gray-600 dark:text-gray-400 mb-8">
+        Follow our quickstart guide to create a working Dioxus app in under 5 minutes
+      </p>
+      <a
+        href="/quickstart"
+        className="inline-flex items-center px-8 py-4 rounded-lg bg-[#FF6B35] hover:bg-[#E85A2F] text-white font-semibold transition-colors no-underline"
+      >
+        Start Building
+      </a>
+    </div>
+  </div>
+</div>
+
+<div className="mt-16 mb-16 max-w-5xl mx-auto px-6">
+  <div className="text-center mb-12">
+    <h2 className="text-3xl font-bold text-gray-900 dark:text-white mb-4">
+      Community & Support
+    </h2>
+    <p className="text-lg text-gray-600 dark:text-gray-400">
+      Join our growing community of Rust developers
+    </p>
+  </div>
+
+  <CardGroup cols={3}>
+    <Card
+      title="GitHub"
+      icon="github"
+      href="https://github.com/DioxusLabs/dioxus"
+    >
+      Star us on GitHub and contribute to the project
+    </Card>
+    <Card
+      title="Discord"
+      icon="discord"
+      href="https://discord.gg/XgGxMSkvUM"
+    >
+      Join our Discord server for help and discussions
+    </Card>
+    <Card
+      title="Examples"
+      icon="book-open"
+      href="https://github.com/DioxusLabs/dioxus/tree/main/examples"
+    >
+      Explore real-world examples and demos
+    </Card>
+  </CardGroup>
+</div>

@@ -1,0 +1,402 @@
+---
+title: "#[server] Macro"
+description: "Mark async functions as server-only and generate client stubs for RPC calls"
+---
+
+The `#[server]` macro transforms async functions into server functions that can be called from the client. It generates client-side stubs that make HTTP requests and server-side handlers that execute the function.
+
+## Basic Usage
+
+```rust
+use dioxus::prelude::*;
+
+#[server]
+async fn get_data() -> Result<String> {
+    Ok("Hello from server".to_string())
+}
+
+#[server]
+async fn save_data(data: String) -> Result<()> {
+    // Server-only code
+    println!("Saving: {}", data);
+    Ok(())
+}
+```
+
+The function is called the same way on both client and server:
+
+```rust
+fn Component() -> Element {
+    let mut data = use_signal(|| String::new());
+    
+    rsx! {
+        button {
+            onclick: move |_| async move {
+                if let Ok(result) = get_data().await {
+                    data.set(result);
+                }
+            },
+            "Load Data"
+        }
+        p { "{data}" }
+    }
+}
+```
+
+## Macro Arguments
+
+The `#[server]` macro accepts optional named arguments:
+
+### `endpoint`
+
+Customize the URL path where the function is mounted (defaults to `/api`):
+
+```rust
+#[server(endpoint = "/my_api/my_function")]
+async fn custom_endpoint() -> Result<String> {
+    Ok("Custom path".to_string())
+}
+```
+
+### `input`
+
+Specify the encoding for request arguments (defaults to `Json<T>`):
+
+```rust
+use dioxus::fullstack::Cbor;
+
+#[server(input = Cbor<T>)]
+async fn cbor_input(data: Vec<u8>) -> Result<()> {
+    Ok(())
+}
+```
+
+Available input encoders:
+- `Json<T>` - JSON-encoded request bodies (default)
+- `Cbor<T>` - CBOR binary encoding
+- `MessagePack<T>` - MessagePack binary encoding
+- Any axum `FromRequest` extractor
+
+### `output`
+
+Specify the encoding for responses (defaults to `Json`):
+
+```rust
+#[server(output = Cbor)]
+async fn cbor_output() -> Result<Vec<u8>> {
+    Ok(vec![1, 2, 3])
+}
+```
+
+### Middleware
+
+Add tower `Layer` middleware to server functions:
+
+```rust
+use tower_http::timeout::TimeoutLayer;
+use std::time::Duration;
+
+#[server]
+#[middleware(TimeoutLayer::new(Duration::from_secs(5)))]
+async fn with_timeout() -> Result<String> {
+    Ok("Response".to_string())
+}
+```
+
+Common middleware layers:
+- `tower_http::trace::TraceLayer` - Request/response tracing
+- `tower_http::compression::CompressionLayer` - Response compression
+- `tower_http::cors::CorsLayer` - CORS headers
+- `tower_http::timeout::TimeoutLayer` - Request timeouts
+- `tower_sessions::SessionManagerLayer` - Session management
+
+## Return Types
+
+Server functions must return `Result<T, E>` where:
+
+### Success Type `T`
+
+Can be either:
+- **Serializable**: Any type implementing `Serialize + DeserializeOwned`
+- **Response type**: Types implementing `FromResponse` and `IntoResponse` (like `Websocket`, `FileStream`, etc.)
+
+```rust
+// Serializable return
+#[server]
+async fn get_user(id: u32) -> Result<User> {
+    Ok(User { id, name: "Alice".into() })
+}
+
+// Response type return
+#[server]
+async fn websocket_connection() -> Result<Websocket> {
+    Ok(Websocket::new())
+}
+```
+
+### Error Type `E`
+
+Can be:
+- **Custom error**: Any type implementing `From<ServerFnError> + Serialize + DeserializeOwned`
+- **`anyhow::Error`**: General error handling
+- **`StatusCode`**: HTTP status codes
+- **`HttpError`**: HTTP errors with status and message
+
+```rust
+use http::StatusCode;
+
+// Using StatusCode
+#[server]
+async fn get_admin_data() -> Result<String, StatusCode> {
+    if !is_admin() {
+        return Err(StatusCode::FORBIDDEN);
+    }
+    Ok("Admin data".into())
+}
+
+// Using anyhow
+#[server]
+async fn fallible_operation() -> Result<String, anyhow::Error> {
+    let data = load_data().context("Failed to load")?;
+    Ok(data)
+}
+```
+
+## Argument Types
+
+Server functions accept:
+
+### Multiple Serializable Arguments
+
+All arguments must implement `Serialize + DeserializeOwned`:
+
+```rust
+#[server]
+async fn create_post(title: String, body: String, tags: Vec<String>) -> Result<Post> {
+    Ok(Post { title, body, tags })
+}
+```
+
+### Single Extractor Argument
+
+One argument implementing both `FromRequest + IntoRequest`:
+
+```rust
+use dioxus::fullstack::Form;
+
+#[server]
+async fn handle_form(form: Form<LoginData>) -> Result<()> {
+    let data = form.0;
+    Ok(())
+}
+```
+
+## Server-Side Context
+
+Access request context in server functions using extractors:
+
+```rust
+use dioxus::fullstack::FullstackContext;
+use dioxus::server::axum::{Extension, TypedHeader};
+use headers::Authorization;
+
+#[server]
+async fn protected_data() -> Result<String> {
+    // Extract axum extensions
+    let Extension(db): Extension<Database> = 
+        FullstackContext::extract().await?;
+    
+    // Extract headers
+    let TypedHeader(auth): TypedHeader<Authorization<Bearer>> = 
+        FullstackContext::extract().await?;
+    
+    Ok("Protected data".into())
+}
+```
+
+## Code Generation
+
+The macro generates:
+
+**Client-side**:
+- Serializes arguments to JSON (or specified format)
+- Makes HTTP POST request to endpoint
+- Deserializes response
+- Returns `Result<T, E>`
+
+**Server-side**:
+- Registers handler at endpoint path
+- Deserializes request body
+- Calls original function
+- Serializes result to response
+
+## Related Types
+
+- [`ServerFnResult<T>`](/api/fullstack/server-fn#serverfnresult) - Convenient alias for `Result<T, ServerFnError>`
+- [`ServerFnError`](/api/fullstack/server-fn#serverfnerror) - Error type for server functions
+- [`FullstackContext`](/api/fullstack/extractors#fullstackcontext) - Server-side request context
+
+## Type Reference
+
+### `ServerFnResult<T>`
+
+```rust
+type ServerFnResult<T = ()> = Result<T, ServerFnError>;
+```
+
+A convenient type alias for server function results.
+
+**Location**: `packages/fullstack-core/src/error.rs:22`
+
+### `ServerFnError`
+
+```rust
+pub enum ServerFnError {
+    ServerError {
+        message: String,
+        code: u16,
+        details: Option<serde_json::Value>,
+    },
+    Request(RequestError),
+    StreamError(String),
+    Registration(String),
+    UnsupportedRequestMethod(String),
+    MiddlewareError(String),
+    Deserialization(String),
+    Serialization(String),
+    Args(String),
+    MissingArg(String),
+    Response(String),
+}
+```
+
+The error type encompassing all possible server function errors.
+
+**Location**: `packages/fullstack-core/src/error.rs:27`
+
+#### Variants
+
+- **`ServerError`** - Error running the function on the server
+  - `message`: Human-readable error description
+  - `code`: HTTP status code
+  - `details`: Optional structured error data
+
+- **`Request`** - Network error reaching the server (client-side)
+
+- **`StreamError`** - Error reading response body stream
+
+- **`Registration`** - Error registering server function
+
+- **`UnsupportedRequestMethod`** - Invalid HTTP method
+
+- **`MiddlewareError`** - Middleware processing error
+
+- **`Deserialization`** - Error deserializing server response
+
+- **`Serialization`** - Error serializing arguments
+
+- **`Args`** - Error deserializing server-side arguments
+
+- **`MissingArg`** - Required argument not provided
+
+- **`Response`** - Error creating HTTP response
+
+#### Methods
+
+```rust
+impl ServerFnError {
+    pub fn new(message: impl ToString) -> Self
+    pub async fn from_axum_response(resp: Response) -> Self
+}
+```
+
+**Location**: `packages/fullstack-core/src/error.rs:86-117`
+
+## Examples
+
+### Basic CRUD Operations
+
+```rust
+use serde::{Serialize, Deserialize};
+
+#[derive(Serialize, Deserialize, Clone)]
+struct Todo {
+    id: u32,
+    title: String,
+    completed: bool,
+}
+
+#[server]
+async fn get_todos() -> Result<Vec<Todo>> {
+    // Database query
+    Ok(vec![Todo {
+        id: 1,
+        title: "Learn Dioxus".into(),
+        completed: false,
+    }])
+}
+
+#[server]
+async fn create_todo(title: String) -> Result<Todo> {
+    // Insert into database
+    Ok(Todo { id: 2, title, completed: false })
+}
+
+#[server]
+async fn toggle_todo(id: u32) -> Result<()> {
+    // Update database
+    Ok(())
+}
+```
+
+### With Authentication
+
+```rust
+use dioxus::fullstack::FullstackContext;
+use dioxus::server::axum::Extension;
+
+#[derive(Clone)]
+struct CurrentUser {
+    id: u32,
+    name: String,
+}
+
+#[server]
+async fn get_profile() -> Result<UserProfile> {
+    let Extension(user): Extension<CurrentUser> = 
+        FullstackContext::extract().await?;
+    
+    Ok(UserProfile {
+        name: user.name,
+        email: format!("{}@example.com", user.name),
+    })
+}
+```
+
+### File Upload
+
+```rust
+use dioxus::fullstack::Multipart;
+
+#[server]
+async fn upload_file(form: Multipart) -> Result<String> {
+    // Process multipart form data
+    Ok("File uploaded".into())
+}
+```
+
+### Streaming Response
+
+```rust
+use dioxus::fullstack::TextStream;
+
+#[server]
+async fn stream_data() -> Result<TextStream> {
+    let stream = futures::stream::iter(
+        vec!["chunk1", "chunk2", "chunk3"]
+            .into_iter()
+            .map(|s| Ok(s.to_string()))
+    );
+    Ok(TextStream::new(stream))
+}
+```

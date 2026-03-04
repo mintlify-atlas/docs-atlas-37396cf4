@@ -1,0 +1,490 @@
+---
+title: Native Platform
+description: Build GPU-accelerated native applications with Blitz and WGPU
+---
+
+The Dioxus native renderer provides true native UI rendering using Blitz for layout and Vello for GPU-accelerated vector graphics. Unlike the desktop renderer which uses a webview, native apps render directly to the GPU for maximum performance.
+
+## Overview
+
+### Architecture
+
+Dioxus Native uses:
+- **Blitz**: Custom HTML/CSS layout engine
+- **Vello**: GPU-accelerated 2D graphics via WGPU
+- **Winit**: Cross-platform window management
+- **Native Rendering**: Direct GPU rendering, no browser engine
+
+```
+Dioxus Components
+    → DioxusNativeDOM
+    → Blitz Layout Engine (CSS)
+    → Vello Renderer (GPU)
+    → WGPU (Vulkan/Metal/DX12)
+    → Display
+```
+
+## Quick Start
+
+Add the native dependency:
+
+```toml
+[dependencies]
+dioxus = { version = "0.6", features = ["native"] }
+```
+
+Create a native app:
+
+```rust
+use dioxus::prelude::*;
+
+fn main() {
+    dioxus_native::launch(App);
+}
+
+#[component]
+fn App() -> Element {
+    let mut count = use_signal(|| 0);
+    
+    rsx! {
+        div { 
+            style: "padding: 20px;",
+            h1 { "Native App" }
+            button { 
+                onclick: move |_| count += 1,
+                "Count: {count}"
+            }
+        }
+    }
+}
+```
+
+Run your app:
+
+```bash
+cargo run
+```
+
+## Configuration
+
+Customize the native renderer:
+
+```rust
+use dioxus_native::{Config, WindowAttributes, LogicalSize};
+
+fn main() {
+    let config = Config::new()
+        .with_window_attributes(
+            WindowAttributes::default()
+                .with_title("My Native App")
+                .with_inner_size(LogicalSize::new(1200.0, 800.0))
+                .with_resizable(true)
+        );
+    
+    dioxus_native::launch_cfg(App, vec![], vec![Box::new(config)]);
+}
+```
+
+### GPU Configuration
+
+Configure WGPU features and limits:
+
+```rust
+use dioxus_native::{Features, Limits};
+
+let features = Features {
+    power_preference: wgpu::PowerPreference::HighPerformance,
+    ..Default::default()
+};
+
+let limits = Limits {
+    max_texture_dimension_2d: 8192,
+    ..Default::default()
+};
+
+dioxus_native::launch_cfg(
+    App,
+    vec![],
+    vec![Box::new(features), Box::new(limits)]
+);
+```
+
+## Styling with CSS
+
+Blitz supports modern CSS layout:
+
+```rust
+use dioxus::prelude::*;
+
+#[component]
+fn StyledApp() -> Element {
+    rsx! {
+        style { {include_str!("./styles.css")} }
+        div { class: "container",
+            div { class: "header",
+                h1 { "Native UI" }
+            }
+            div { class: "content",
+                p { "GPU-accelerated rendering" }
+            }
+        }
+    }
+}
+```
+
+```css
+/* styles.css */
+.container {
+    display: flex;
+    flex-direction: column;
+    width: 100%;
+    height: 100vh;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+}
+
+.header {
+    padding: 20px;
+    background: rgba(255, 255, 255, 0.1);
+    backdrop-filter: blur(10px);
+}
+
+.content {
+    flex: 1;
+    padding: 20px;
+    overflow: auto;
+}
+
+h1 {
+    color: white;
+    font-size: 2rem;
+    margin: 0;
+}
+```
+
+### Flexbox Layout
+
+```rust
+rsx! {
+    div { 
+        style: "display: flex; gap: 10px; padding: 20px;",
+        div { 
+            style: "flex: 1; background: #3b82f6; padding: 20px; border-radius: 8px;",
+            "Box 1"
+        }
+        div { 
+            style: "flex: 1; background: #10b981; padding: 20px; border-radius: 8px;",
+            "Box 2"
+        }
+        div { 
+            style: "flex: 1; background: #f59e0b; padding: 20px; border-radius: 8px;",
+            "Box 3"
+        }
+    }
+}
+```
+
+### Grid Layout
+
+```rust
+rsx! {
+    div { 
+        style: "display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; padding: 20px;",
+        for i in 0..9 {
+            div { 
+                style: "background: #8b5cf6; padding: 40px; border-radius: 12px; text-align: center;",
+                "Item {i + 1}"
+            }
+        }
+    }
+}
+```
+
+## Custom Painting
+
+Draw custom graphics using Vello:
+
+```rust
+use dioxus::prelude::*;
+use dioxus_native::{use_wgpu, CustomPaintCtx};
+
+#[component]
+fn CustomGraphics() -> Element {
+    let wgpu = use_wgpu();
+    
+    let custom_paint = move |ctx: &mut CustomPaintCtx| {
+        // Draw custom shapes
+        ctx.fill_rect(10.0, 10.0, 100.0, 100.0, vello::peniko::Color::rgb(1.0, 0.0, 0.0));
+        ctx.stroke_circle(200.0, 200.0, 50.0, 2.0, vello::peniko::Color::rgb(0.0, 1.0, 0.0));
+    };
+    
+    rsx! {
+        canvas { 
+            style: "width: 400px; height: 400px;",
+            onpaint: custom_paint
+        }
+    }
+}
+```
+
+### Vector Graphics
+
+```rust
+use vello::kurbo::{BezPath, Point};
+use vello::peniko::Color;
+
+let draw_bezier = move |ctx: &mut CustomPaintCtx| {
+    let mut path = BezPath::new();
+    path.move_to(Point::new(50.0, 50.0));
+    path.quad_to(
+        Point::new(150.0, 0.0),
+        Point::new(250.0, 50.0)
+    );
+    
+    ctx.stroke_path(&path, 3.0, Color::rgb(0.2, 0.6, 1.0));
+};
+```
+
+## Performance
+
+### GPU Acceleration
+
+All rendering happens on the GPU:
+- Vector graphics rasterized on GPU
+- Text rendering via GPU
+- Hardware-accelerated compositing
+- Efficient batching and caching
+
+### Layout Performance
+
+Blitz provides fast layout:
+- CSS parsing and style computation
+- Flexbox layout algorithm
+- Incremental layout updates
+- Efficient DOM tree management
+
+### Benchmarks
+
+Typical performance metrics:
+- **Frame time**: &lt;1ms for simple UIs
+- **Startup time**: &lt;100ms
+- **Memory**: Lower than webview-based apps
+- **Bundle size**: ~10-15MB
+
+## Window Management
+
+Access window features:
+
+```rust
+use dioxus::prelude::*;
+use winit::window::Window;
+
+#[component]
+fn WindowControls() -> Element {
+    // Access window through context
+    let window = use_context::<Window>();
+    
+    rsx! {
+        button {
+            onclick: move |_| window.set_title("New Title"),
+            "Change Title"
+        }
+        button {
+            onclick: move |_| window.set_fullscreen(Some(Fullscreen::Borderless(None))),
+            "Fullscreen"
+        }
+    }
+}
+```
+
+## Supported CSS Features
+
+Blitz supports:
+
+### Layout
+- Flexbox (display: flex)
+- Grid (display: grid)
+- Block layout
+- Inline layout
+- Absolute/relative positioning
+
+### Styling
+- Colors (hex, rgb, rgba, named)
+- Backgrounds (solid colors, gradients)
+- Borders (width, style, color, radius)
+- Padding and margins
+- Box shadows
+- Text properties (font, size, weight, color)
+
+### Not Yet Supported
+- Full CSS 3 selectors
+- Animations and transitions (coming soon)
+- Complex transforms
+- Some advanced CSS 3 features
+
+## Event Handling
+
+Native apps support standard events:
+
+```rust
+#[component]
+fn Events() -> Element {
+    let mut position = use_signal(|| (0, 0));
+    
+    rsx! {
+        div {
+            onclick: |evt| println!("Clicked!"),
+            onmouseenter: |evt| println!("Mouse entered"),
+            onmousemove: move |evt| {
+                position.set((evt.client_x, evt.client_y));
+            },
+            style: "width: 100%; height: 100vh;",
+            "Mouse: ({position.0}, {position.1})"
+        }
+    }
+}
+```
+
+## Asset Loading
+
+Load images and assets:
+
+```rust
+use dioxus::prelude::*;
+use manganis::*;
+
+const IMAGE: Asset = asset!("./assets/logo.png");
+
+#[component]
+fn ImageDisplay() -> Element {
+    rsx! {
+        img { src: "{IMAGE}" }
+    }
+}
+```
+
+## Text Rendering
+
+Vello provides high-quality text rendering:
+
+```rust
+rsx! {
+    div { 
+        style: "font-family: sans-serif; font-size: 16px; color: #333;",
+        h1 { 
+            style: "font-size: 32px; font-weight: bold;",
+            "Native Text Rendering"
+        }
+        p { 
+            style: "line-height: 1.6;",
+            "High-quality GPU-accelerated text rendering with proper kerning and subpixel positioning."
+        }
+    }
+}
+```
+
+## Platform Support
+
+### Windows
+- Uses DirectX 12 via WGPU
+- Full hardware acceleration
+- Native window decoration
+
+### macOS
+- Uses Metal via WGPU
+- Retina display support
+- Native window features
+
+### Linux
+- Uses Vulkan via WGPU
+- Wayland and X11 support
+- Hardware acceleration
+
+### iOS/Android
+- Experimental support
+- Uses platform-native GPU APIs
+
+## Debugging
+
+### Enable Tracing
+
+```rust
+[dependencies]
+tracing = "0.1"
+tracing-subscriber = "0.3"
+
+fn main() {
+    tracing_subscriber::fmt::init();
+    dioxus_native::launch(App);
+}
+```
+
+### GPU Debugging
+
+Enable WGPU validation:
+
+```bash
+export WGPU_VALIDATION=1
+cargo run
+```
+
+### Layout Debugging
+
+Visualize layout boxes:
+
+```rust
+rsx! {
+    div { 
+        style: "border: 1px solid red;",  // Debug borders
+        "Content"
+    }
+}
+```
+
+## Comparison with Desktop
+
+| Feature | Native | Desktop |
+|---------|--------|--------|
+| Rendering | GPU (Vello) | WebView |
+| Bundle Size | Smaller | Larger |
+| Startup Time | Faster | Slower |
+| CSS Support | Subset | Full |
+| Web APIs | No | Yes |
+| Performance | Higher | Good |
+| Maturity | Experimental | Stable |
+
+## When to Use Native
+
+Choose native rendering when:
+- Maximum performance is critical
+- You want smaller binaries
+- You don't need full web API compatibility
+- You're building graphics-intensive apps
+- You want lower resource usage
+
+Choose desktop rendering when:
+- You need full CSS/HTML support
+- You want web API access
+- You need maximum compatibility
+- You're porting a web app
+
+## Limitations
+
+Current limitations:
+- CSS support is not complete
+- No JavaScript execution
+- Limited web API access
+- Experimental status
+
+## Roadmap
+
+- Full CSS 3 support
+- Animation and transition support
+- More text rendering features
+- Improved accessibility
+- Better debugging tools
+
+## Next Steps
+
+- [Desktop Platform](/platforms/desktop) - WebView-based desktop apps
+- [Styling](/styling) - Advanced CSS techniques
+- [Performance](/performance) - Optimization tips

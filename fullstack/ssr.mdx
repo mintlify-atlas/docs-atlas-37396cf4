@@ -1,0 +1,574 @@
+---
+title: Server-Side Rendering (SSR)
+description: Render Dioxus components to HTML on the server for faster initial loads and better SEO
+---
+
+Server-Side Rendering (SSR) generates HTML for your Dioxus components on the server before sending it to the client. This provides faster initial page loads, better SEO, and progressive enhancement.
+
+## What is SSR?
+
+SSR renders your components to HTML strings on the server:
+
+```rust
+use dioxus::prelude::*;
+
+fn app() -> Element {
+    rsx! {
+        h1 { "Hello, SSR!" }
+        p { "This was rendered on the server" }
+    }
+}
+
+// On the server
+let mut vdom = VirtualDom::new(app);
+vdom.rebuild_in_place();
+let html = dioxus_ssr::render(&vdom);
+// html = "<h1>Hello, SSR!</h1><p>This was rendered on the server</p>"
+```
+
+## SSR vs CSR
+
+### Client-Side Rendering (CSR)
+
+1. Browser downloads JavaScript/WASM
+2. JavaScript executes
+3. Components render
+4. User sees content
+
+**Pros**: Simple, no server required, works offline
+**Cons**: Slower initial load, poor SEO, blank screen while loading
+
+### Server-Side Rendering (SSR)
+
+1. Server renders HTML
+2. Browser displays HTML immediately
+3. JavaScript/WASM downloads in background
+4. Hydration attaches interactivity
+
+**Pros**: Faster perceived load, better SEO, works without JavaScript
+**Cons**: Requires server, more complex
+
+### Comparison
+
+| Feature | CSR | SSR |
+|---------|-----|-----|
+| Initial Load | Slow | Fast |
+| SEO | Poor | Good |
+| Server Required | No | Yes |
+| Time to Interactive | Same as visible | Slower than visible |
+| Complexity | Low | Medium |
+
+## Basic Setup
+
+Dioxus handles SSR automatically when using `dioxus::launch`:
+
+```rust
+use dioxus::prelude::*;
+
+fn main() {
+    // Automatically:
+    // - Renders HTML on server
+    // - Serves HTML to browser  
+    // - Hydrates on client
+    dioxus::launch(app);
+}
+
+fn app() -> Element {
+    rsx! {
+        h1 { "My App" }
+        p { "Server-rendered by default!" }
+    }
+}
+```
+
+### Feature Flags
+
+Your `Cargo.toml` needs the right features:
+
+```toml
+[dependencies]
+dioxus = { version = "0.7", features = ["web", "fullstack"] }
+
+[features]
+default = []
+server = ["dioxus/server"]
+```
+
+Build commands:
+
+```bash
+# Development with hot reload
+dx serve --platform web
+
+# Production build
+dx build --platform web --release
+```
+
+## Rendering HTML
+
+### Automatic Rendering
+
+With `dioxus::launch`, SSR happens automatically on the server side.
+
+### Manual Rendering
+
+For custom setups, render manually:
+
+```rust
+use dioxus::prelude::*;
+use dioxus_ssr::Renderer;
+
+#[cfg(feature = "server")]
+async fn render_page() -> String {
+    let mut vdom = VirtualDom::new(app);
+    vdom.rebuild_in_place();
+    
+    // Basic rendering
+    let html = dioxus_ssr::render(&vdom);
+    
+    // Or with custom configuration
+    let mut renderer = Renderer::new();
+    renderer.pre_render = true; // Enable hydration markers
+    let html = renderer.render(&vdom);
+    
+    html
+}
+```
+
+### Rendering Elements
+
+Render individual `rsx!` blocks without a VirtualDom:
+
+```rust
+let html = dioxus_ssr::render_element(rsx! {
+    div {
+        h1 { "Quick Render" }
+        p { "No VirtualDom needed" }
+    }
+});
+```
+
+## Custom Server Setup
+
+For more control, use `dioxus::serve` with custom Axum configuration:
+
+```rust
+use dioxus::prelude::*;
+
+fn main() {
+    #[cfg(not(feature = "server"))]
+    dioxus::launch(app);
+    
+    #[cfg(feature = "server")]
+    dioxus::serve(|| async move {
+        use dioxus::server::axum::routing::get;
+        
+        Ok(dioxus::server::router(app)
+            .route("/health", get(|| async { "OK" }))
+            .route("/about", get(|| async { "About page" })))
+    });
+}
+
+fn app() -> Element {
+    rsx! { h1 { "My App" } }
+}
+```
+
+## SSR Configuration
+
+Configure SSR behavior with `ServeConfig`:
+
+```rust
+#[cfg(feature = "server")]
+use dioxus::fullstack::ServeConfig;
+
+let config = ServeConfig::builder()
+    .index(custom_index_html())
+    .build();
+```
+
+### Custom HTML Template
+
+Provide a custom HTML wrapper:
+
+```rust
+fn custom_index_html() -> String {
+    r#"
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>My App</title>
+        <link rel="stylesheet" href="/styles.css">
+    </head>
+    <body>
+        <div id="main">{app}</div>
+        <script src="/assets/main.js"></script>
+    </body>
+    </html>
+    "#.to_string()
+}
+```
+
+The `{app}` placeholder is replaced with your rendered component.
+
+## Data Fetching
+
+Fetch data on the server before rendering:
+
+### Server-Side Data Loading
+
+```rust
+fn user_profile(user_id: u32) -> Element {
+    // Fetches on server, cached for client
+    let user = use_server_future(move || async move {
+        get_user(user_id).await
+    });
+    
+    rsx! {
+        match user() {
+            Some(Ok(user)) => rsx! {
+                h1 { "{user.name}" }
+                p { "{user.bio}" }
+            },
+            Some(Err(e)) => rsx! { "Error: {e}" },
+            None => rsx! { "Loading..." },
+        }
+    }
+}
+
+#[get("/api/users/{id}")]
+async fn get_user(id: u32) -> Result<User> {
+    // Database query here
+    todo!()
+}
+```
+
+The `use_server_future` hook:
+- Runs on the server during SSR
+- Serializes the result into the HTML
+- On the client, reads the cached result
+- Prevents duplicate requests
+
+### Initial Props
+
+Pass data to your component from the server:
+
+```rust
+#[derive(Props, Clone, PartialEq)]
+struct AppProps {
+    initial_user: User,
+}
+
+fn app(props: AppProps) -> Element {
+    rsx! {
+        h1 { "Welcome, {props.initial_user.name}!" }
+    }
+}
+```
+
+## Performance Optimization
+
+### Rendering Pool
+
+Dioxus uses a pool of renderers for concurrent requests. Configure pool size:
+
+```rust
+// Set via environment variable
+// DIOXUS_SSR_POOL_SIZE=16
+```
+
+### Incremental Rendering
+
+For large pages, render incrementally:
+
+```rust
+let config = ServeConfig::builder()
+    .incremental(IncrementalRenderer::new())
+    .build();
+```
+
+### Caching
+
+Cache rendered pages:
+
+```rust
+use std::sync::Arc;
+use tokio::sync::RwLock;
+
+static CACHE: LazyLock<RwLock<HashMap<String, String>>> = 
+    LazyLock::new(|| RwLock::new(HashMap::new()));
+
+async fn get_cached_page(path: &str) -> Option<String> {
+    CACHE.read().await.get(path).cloned()
+}
+
+async fn cache_page(path: String, html: String) {
+    CACHE.write().await.insert(path, html);
+}
+```
+
+## Suspense and Streaming
+
+Render pages before all data is ready using Suspense boundaries:
+
+```rust
+fn app() -> Element {
+    rsx! {
+        div {
+            h1 { "My App" }
+            Suspense {
+                fallback: |_| rsx! { "Loading..." },
+                SlowComponent {}
+            }
+        }
+    }
+}
+
+fn SlowComponent() -> Element {
+    let data = use_server_future(|| async {
+        slow_database_query().await
+    });
+    
+    rsx! {
+        match data() {
+            Some(Ok(data)) => rsx! { "{data}" },
+            _ => rsx! { "Loading..." },
+        }
+    }
+}
+```
+
+### Streaming Mode
+
+Enable out-of-order streaming to send initial HTML immediately:
+
+```rust
+let config = ServeConfig::builder()
+    .streaming_mode(StreamingMode::OutOfOrder)
+    .build();
+```
+
+With streaming:
+1. Server sends initial HTML with loading placeholders
+2. Client displays immediately
+3. As data loads, server streams updates
+4. Client patches in the real content
+
+See `examples/07-fullstack/streaming.rs` for details.
+
+## SEO Optimization
+
+### Meta Tags
+
+Set page metadata:
+
+```rust
+use dioxus::prelude::*;
+use dioxus::document;
+
+fn article_page() -> Element {
+    document::set_title("My Article Title");
+    document::set_meta("description", "Article description for search engines");
+    document::set_meta("og:title", "My Article Title");
+    document::set_meta("og:image", "https://example.com/image.jpg");
+    
+    rsx! {
+        article {
+            h1 { "My Article" }
+            p { "Content here" }
+        }
+    }
+}
+```
+
+### Structured Data
+
+Add JSON-LD for rich results:
+
+```rust
+rsx! {
+    script { r#type: "application/ld+json",
+        r#"{{
+            "@context": "https://schema.org",
+            "@type": "Article",
+            "headline": "My Article",
+            "author": "John Doe"
+        }}"#
+    }
+}
+```
+
+## Error Handling
+
+### Error Boundaries
+
+Catch rendering errors:
+
+```rust
+fn app() -> Element {
+    rsx! {
+        ErrorBoundary {
+            handle_error: |err| rsx! {
+                div {
+                    h1 { "Something went wrong" }
+                    p { "{err}" }
+                }
+            },
+            Component {}
+        }
+    }
+}
+```
+
+### Custom Error Pages
+
+Handle HTTP errors:
+
+```rust
+#[cfg(feature = "server")]
+use axum::response::IntoResponse;
+use dioxus::prelude::*;
+
+async fn handle_404() -> impl IntoResponse {
+    let html = dioxus_ssr::render_element(rsx! {
+        html {
+            body {
+                h1 { "404 - Page Not Found" }
+            }
+        }
+    });
+    
+    (StatusCode::NOT_FOUND, html)
+}
+```
+
+See `examples/07-fullstack/custom_error_page.rs`.
+
+## Testing SSR
+
+Test server-rendered output:
+
+```rust
+#[cfg(test)]
+mod tests {
+    use super::*;
+    
+    #[test]
+    fn test_ssr_output() {
+        let html = dioxus_ssr::render_element(rsx! {
+            h1 { "Test" }
+        });
+        
+        assert!(html.contains("<h1>Test</h1>"));
+    }
+}
+```
+
+## Deployment
+
+Deploy your SSR app as a standard Rust binary:
+
+```bash
+# Build for production
+cargo build --release --features server
+
+# Run the server
+./target/release/my-app
+```
+
+The server listens on `0.0.0.0:8080` by default. Configure with environment variables:
+
+```bash
+PORT=3000 ./target/release/my-app
+```
+
+See deployment guides for:
+- Docker
+- Fly.io
+- Railway
+- AWS
+- Digital Ocean
+
+## SSR-Only Mode
+
+Build server-rendered apps without client-side JavaScript:
+
+```rust
+// In Dioxus.toml
+[web.wasm-opt]
+enabled = false
+```
+
+Useful for:
+- Content sites
+- Admin panels
+- Progressive enhancement scenarios
+
+See `examples/07-fullstack/ssr-only`.
+
+## Best Practices
+
+1. **Use `use_server_future`** for data that should load on the server
+2. **Implement Suspense** for better loading states
+3. **Add meta tags** for SEO
+4. **Cache rendered pages** when possible
+5. **Test both server and client rendering** to ensure consistency
+6. **Use error boundaries** to handle rendering failures gracefully
+7. **Keep components deterministic** - same input should produce same output
+
+## Common Issues
+
+### Hydration Mismatches
+
+Server and client must render identically:
+
+```rust
+// ❌ Bad - uses current time, differs on server/client
+fn bad_component() -> Element {
+    let time = std::time::SystemTime::now();
+    rsx! { "Time: {time:?}" }
+}
+
+// ✅ Good - deterministic on server, updates on client
+fn good_component() -> Element {
+    let time = use_signal(|| std::time::SystemTime::now());
+    
+    use_effect(move || {
+        // Update on client only
+        time.set(std::time::SystemTime::now());
+    });
+    
+    rsx! { "Time: {time:?}" }
+}
+```
+
+### Server-Only Code
+
+Keep server-only code behind feature flags:
+
+```rust
+#[cfg(feature = "server")]
+use database::connect;
+
+#[get("/api/data")]
+async fn get_data() -> Result<String> {
+    #[cfg(feature = "server")]
+    {
+        let db = connect().await?;
+        Ok(db.query("SELECT * FROM data").await?)
+    }
+    #[cfg(not(feature = "server"))]
+    {
+        unreachable!()
+    }
+}
+```
+
+## Examples
+
+- `examples/07-fullstack/fullstack_hello_world.rs` - Basic SSR setup
+- `examples/07-fullstack/custom_axum_serve.rs` - Custom server
+- `examples/07-fullstack/ssr-only/` - SSR without hydration
+- `examples/07-fullstack/streaming.rs` - Streaming SSR

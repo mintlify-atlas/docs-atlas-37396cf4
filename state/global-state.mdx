@@ -1,0 +1,404 @@
+---
+title: Global State
+description: Application-wide state accessible from anywhere
+---
+
+Global signals and memos provide application-wide state that can be accessed from any component without context or prop drilling. They're initialized lazily on first use and live for the entire application lifetime.
+
+## Basic Usage
+
+```rust
+use dioxus::prelude::*;
+
+// Define global state with static
+static COUNT: GlobalSignal<i32> = Signal::global(|| 0);
+
+fn main() {
+    dioxus::launch(App);
+}
+
+fn App() -> Element {
+    rsx! {
+        Display {}
+        Controls {}
+    }
+}
+
+#[component]
+fn Display() -> Element {
+    // Access global state directly
+    rsx! { "Count: {COUNT}" }
+}
+
+#[component]
+fn Controls() -> Element {
+    rsx! {
+        button { 
+            onclick: move |_| *COUNT.write() += 1,
+            "Increment" 
+        }
+        button { 
+            onclick: move |_| *COUNT.write() -= 1,
+            "Decrement" 
+        }
+    }
+}
+```
+
+## Creating Global Signals
+
+### Basic Global Signal
+
+```rust
+static COUNTER: GlobalSignal<i32> = Signal::global(|| 0);
+```
+
+The function signature:
+
+```rust
+impl<T: 'static> Signal<T> {
+    pub const fn global(constructor: fn() -> T) -> GlobalSignal<T>
+}
+```
+
+- Must be `static` and `const` initialization
+- Constructor is a function pointer (not a closure)
+- Initialized lazily on first access
+
+### Global Memos
+
+```rust
+static COUNT: GlobalSignal<i32> = Signal::global(|| 0);
+static DOUBLED: GlobalMemo<i32> = Signal::global_memo(|| COUNT() * 2);
+
+fn App() -> Element {
+    rsx! {
+        button {
+            onclick: move |_| *COUNT.write() += 1,
+            "Count: {COUNT}, Doubled: {DOUBLED}"
+        }
+    }
+}
+```
+
+Function signature:
+
+```rust
+impl<T: PartialEq + 'static> Signal<T> {
+    pub const fn global_memo(constructor: fn() -> T) -> GlobalMemo<T>
+}
+```
+
+## Accessing Global State
+
+### Direct Access
+
+```rust
+static THEME: GlobalSignal<String> = Signal::global(|| "light".to_string());
+
+// Read
+let current_theme = THEME();
+let theme_ref = THEME.read();
+
+// Write  
+*THEME.write() = "dark".to_string();
+THEME.write().push_str("-mode");
+```
+
+### Getting the Underlying Signal
+
+Some operations require a mutable `Signal`:
+
+```rust
+static COUNT: GlobalSignal<i32> = Signal::global(|| 0);
+
+#[component]
+fn Counter() -> Element {
+    // Get the actual signal for operations like .set()
+    let mut count = use_hook(|| COUNT.resolve());
+    
+    rsx! {
+        button { 
+            onclick: move |_| count.set(0),
+            "Reset" 
+        }
+    }
+}
+```
+
+Or use `signal()` method:
+
+```rust
+let mut count_signal = COUNT.signal();
+count_signal.set(42);
+```
+
+## Type Aliases
+
+```rust
+// Global signal type
+pub type GlobalSignal<T> = Global<Signal<T>, T>;
+
+// Global memo type  
+pub type GlobalMemo<T> = GlobalMemo<T>;
+```
+
+## Complete Example
+
+```rust
+use dioxus::prelude::*;
+
+#[derive(Clone, Copy, PartialEq)]
+enum Theme {
+    Light,
+    Dark,
+}
+
+static THEME: GlobalSignal<Theme> = Signal::global(|| Theme::Light);
+static COUNTER: GlobalSignal<i32> = Signal::global(|| 0);
+
+fn main() {
+    dioxus::launch(App);
+}
+
+fn App() -> Element {
+    rsx! {
+        header {
+            ThemeToggle {}
+            Counter {}
+        }
+        main {
+            ThemedContent {}
+        }
+    }
+}
+
+#[component]
+fn ThemeToggle() -> Element {
+    let current_theme = THEME();
+    
+    rsx! {
+        button {
+            onclick: move |_| {
+                *THEME.write() = match current_theme {
+                    Theme::Light => Theme::Dark,
+                    Theme::Dark => Theme::Light,
+                };
+            },
+            match current_theme {
+                Theme::Light => "🌙 Dark Mode",
+                Theme::Dark => "☀️ Light Mode",
+            }
+        }
+    }
+}
+
+#[component]
+fn Counter() -> Element {
+    rsx! {
+        div {
+            button { onclick: move |_| *COUNTER.write() -= 1, "-" }
+            span { " {COUNTER} " }
+            button { onclick: move |_| *COUNTER.write() += 1, "+" }
+        }
+    }
+}
+
+#[component]
+fn ThemedContent() -> Element {
+    let theme = THEME();
+    
+    rsx! {
+        div {
+            class: match theme {
+                Theme::Light => "light",
+                Theme::Dark => "dark",
+            },
+            "Counter value: {COUNTER}"
+            "Current theme: {theme:?}"
+        }
+    }
+}
+```
+
+## Common Patterns
+
+### Application Settings
+
+```rust
+#[derive(Clone)]
+struct Settings {
+    language: String,
+    volume: f32,
+    notifications: bool,
+}
+
+static SETTINGS: GlobalSignal<Settings> = Signal::global(|| Settings {
+    language: "en".to_string(),
+    volume: 0.8,
+    notifications: true,
+});
+
+fn update_volume(new_volume: f32) {
+    SETTINGS.write().volume = new_volume;
+}
+```
+
+### User Authentication
+
+```rust
+#[derive(Clone)]
+struct User {
+    id: u32,
+    name: String,
+    email: String,
+}
+
+static CURRENT_USER: GlobalSignal<Option<User>> = Signal::global(|| None);
+
+fn login(user: User) {
+    *CURRENT_USER.write() = Some(user);
+}
+
+fn logout() {
+    *CURRENT_USER.write() = None;
+}
+
+fn is_logged_in() -> bool {
+    CURRENT_USER.read().is_some()
+}
+```
+
+### Feature Flags
+
+```rust
+static ENABLE_BETA_FEATURES: GlobalSignal<bool> = Signal::global(|| false);
+static ENABLE_ANALYTICS: GlobalSignal<bool> = Signal::global(|| true);
+
+#[component]
+fn BetaFeature() -> Element {
+    if !ENABLE_BETA_FEATURES() {
+        return None;
+    }
+    
+    rsx! { "Beta feature content" }
+}
+```
+
+### Derived Global State
+
+```rust
+static ITEMS: GlobalSignal<Vec<Item>> = Signal::global(|| vec![]);
+static ITEM_COUNT: GlobalMemo<usize> = Signal::global_memo(|| ITEMS.read().len());
+static HAS_ITEMS: GlobalMemo<bool> = Signal::global_memo(|| !ITEMS.read().is_empty());
+
+fn App() -> Element {
+    rsx! {
+        "Total items: {ITEM_COUNT}"
+        
+        if HAS_ITEMS() {
+            ItemList {}
+        }
+    }
+}
+```
+
+## Initialization from External Sources
+
+Since global signals require function pointers, you can't capture environment variables directly:
+
+```rust
+// ❌ This won't work - can't capture in const context
+// static CONFIG: GlobalSignal<Config> = Signal::global(|| {
+//     Config::from_env()  // Can't call at compile time
+// });
+
+// ✅ Instead, initialize lazily with default and update
+static CONFIG: GlobalSignal<Option<Config>> = Signal::global(|| None);
+
+fn App() -> Element {
+    use_future(|| async move {
+        // Load config on app start
+        let config = Config::from_env().await;
+        *CONFIG.write() = Some(config);
+    });
+    
+    rsx! { /* ... */ }
+}
+```
+
+## Global State vs Context
+
+### Use Global State When:
+
+- State is truly application-wide (settings, auth, theme)
+- Every component might need access
+- State lifetime matches app lifetime
+- Single instance is needed
+
+### Use Context When:
+
+- State is scoped to a subtree
+- Multiple instances might exist (different contexts in different subtrees)
+- State might change based on routing
+- Library components that need configuration
+
+## Performance
+
+- Global state is as fast as regular signals
+- Lazy initialization - only created on first access
+- Components only rerender when they read values that change
+- Zero overhead if never accessed
+
+## Limitations
+
+- Constructor must be a function pointer (no closures)
+- Can't capture environment at initialization
+- Lives for entire application lifetime (can't be dropped)
+- Not recommended for libraries (makes testing harder)
+
+### Library Considerations
+
+Global state makes it difficult to have multiple instances:
+
+```rust
+// ❌ Library code using global state
+static CHART_CONFIG: GlobalSignal<Config> = Signal::global(|| Config::default());
+
+// Users can only have ONE chart config globally!
+```
+
+For libraries, prefer context or props:
+
+```rust
+// ✅ Better for libraries
+#[component]
+fn Chart(config: Signal<Config>) -> Element {
+    // Can have multiple charts with different configs
+    rsx! { /* ... */ }
+}
+```
+
+## Testing
+
+Global state persists across tests, which can cause issues:
+
+```rust
+#[test]
+fn test_counter() {
+    // Global state from previous test might affect this one
+    assert_eq!(COUNTER(), 0);  // Might fail!
+}
+```
+
+Solutions:
+1. Reset state in each test
+2. Use context instead for testable code
+3. Run tests with `--test-threads=1`
+
+## Related
+
+- [use_signal](/state/use-signal) - Component-scoped signals
+- [context](/state/context) - Tree-scoped state sharing  
+- [stores](/state/stores) - Fine-grained nested state
+- [use_memo](/hooks/use-memo) - Computed values

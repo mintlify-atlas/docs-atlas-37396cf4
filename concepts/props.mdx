@@ -1,0 +1,423 @@
+---
+title: Props
+description: Learn how to pass data between components using props in Dioxus
+---
+
+Props allow you to pass data from parent components to child components. They make components reusable and help you build composable UIs.
+
+## The Props Trait
+
+Props in Dioxus must implement the `Properties` trait:
+
+```rust
+pub trait Properties: Clone + Sized + 'static {
+    type Builder;
+    
+    fn builder() -> Self::Builder;
+    fn memoize(&mut self, other: &Self) -> bool;
+}
+```
+
+Key requirements:
+- **`Clone`**: Props must be cloneable
+- **`'static`**: Props must have a static lifetime
+- **`PartialEq`**: Required for memoization (usually via derive)
+
+## Using the #[component] Macro
+
+The recommended way to define props is using the `#[component]` macro:
+
+```rust
+use dioxus::prelude::*;
+
+#[component]
+fn Greeting(name: String, age: i32) -> Element {
+    rsx! {
+        p { "Hello, {name}! You are {age} years old." }
+    }
+}
+
+// Usage
+rsx! {
+    Greeting { name: "Alice", age: 30 }
+}
+```
+
+This automatically generates a `GreetingProps` struct with the `Properties` trait implemented.
+
+## Manual Props Definition
+
+You can also manually define props using `#[derive(Props)]`:
+
+```rust
+use dioxus::prelude::*;
+
+#[derive(Props, PartialEq, Clone)]
+struct ButtonProps {
+    text: String,
+    color: String,
+}
+
+fn Button(props: ButtonProps) -> Element {
+    rsx! {
+        button {
+            style: "color: {props.color}",
+            "{props.text}"
+        }
+    }
+}
+```
+
+<Note>
+The `#[component]` macro is preferred because it provides better error messages and additional compile-time checks.
+</Note>
+
+## Optional Props
+
+### Using Option&lt;T&gt;
+
+Fields with type `Option<T>` are automatically optional:
+
+```rust
+#[component]
+fn Avatar(
+    url: String,
+    size: Option<u32>,
+) -> Element {
+    let size = size.unwrap_or(64);
+    
+    rsx! {
+        img {
+            src: "{url}",
+            width: "{size}px",
+            height: "{size}px",
+        }
+    }
+}
+
+// Usage - size is optional
+rsx! {
+    Avatar { url: "avatar.png" }
+    Avatar { url: "avatar.png", size: 128 }
+}
+```
+
+### Using #[props(default)]
+
+Provide default values for optional props:
+
+```rust
+#[component]
+fn Button(
+    text: String,
+    #[props(default)]
+    disabled: bool,
+    #[props(default = "primary".to_string())]
+    variant: String,
+) -> Element {
+    rsx! {
+        button {
+            class: "btn btn-{variant}",
+            disabled: disabled,
+            "{text}"
+        }
+    }
+}
+
+// Usage
+rsx! {
+    Button { text: "Click me" }
+    Button { text: "Disabled", disabled: true }
+    Button { text: "Secondary", variant: "secondary" }
+}
+```
+
+### Making Option&lt;T&gt; Required
+
+Use `#[props(!optional)]` to require an `Option<T>` field:
+
+```rust
+#[component]
+fn MaybeShow(
+    #[props(!optional)]
+    content: Option<String>,
+) -> Element {
+    rsx! {
+        if let Some(text) = content {
+            p { "{text}" }
+        }
+    }
+}
+
+// Must explicitly pass Some or None
+rsx! {
+    MaybeShow { content: Some("Hello".to_string()) }
+    MaybeShow { content: None }
+}
+```
+
+## Type Conversions
+
+### Using #[props(into)]
+
+Automatically convert types using the `Into` trait:
+
+```rust
+#[component]
+fn Label(
+    #[props(into)]
+    text: String,
+    #[props(into)]
+    count: i64,
+) -> Element {
+    rsx! {
+        span { "{text}: {count}" }
+    }
+}
+
+// Can pass &str instead of String, i32 instead of i64
+rsx! {
+    Label { text: "Items", count: 42i32 }
+}
+```
+
+### String Formatting
+
+String props accept formatted strings:
+
+```rust
+#[component]
+fn Message(text: String) -> Element {
+    rsx! { p { "{text}" } }
+}
+
+let name = "World";
+rsx! {
+    Message { text: "Hello, {name}!" }
+}
+```
+
+## Children Props
+
+Accept child elements with the `children: Element` parameter:
+
+```rust
+#[component]
+fn Card(
+    title: String,
+    children: Element,
+) -> Element {
+    rsx! {
+        div { class: "card",
+            h2 { "{title}" }
+            div { class: "card-body",
+                {children}
+            }
+        }
+    }
+}
+
+// Usage
+rsx! {
+    Card { title: "My Card",
+        p { "This is the card content" }
+        button { "Action" }
+    }
+}
+```
+
+## Reactive Props
+
+### Using ReadSignal&lt;T&gt;
+
+Make props reactive by wrapping them in `ReadSignal`:
+
+```rust
+#[component]
+fn Counter(count: ReadSignal<i32>) -> Element {
+    // The memo will automatically rerun when count changes
+    let doubled = use_memo(move || count() * 2);
+    
+    rsx! {
+        div {
+            "Count: {count}"
+            "Doubled: {doubled}"
+        }
+    }
+}
+
+// Dioxus automatically converts values to ReadSignal
+let mut count = use_signal(|| 0);
+
+rsx! {
+    Counter { count: count() }
+    // Or pass the signal directly
+    Counter { count }
+}
+```
+
+<Tip>
+Use `ReadSignal` props when you need hooks like `use_memo` or `use_effect` to react to prop changes.
+</Tip>
+
+### Non-Reactive Props
+
+Regular props trigger component re-render when changed, but don't work with reactive hooks:
+
+```rust
+#[component]
+fn Display(value: i32) -> Element {
+    // This memo will NOT update when value changes
+    // because value is not reactive
+    let doubled = use_memo(move || value * 2);
+    
+    rsx! {
+        "Value: {value}"
+        "Doubled: {doubled}"
+    }
+}
+```
+
+To fix this, either:
+1. Use `ReadSignal<T>` (recommended)
+2. Use `use_reactive!` macro to explicitly track dependencies
+
+## Event Handler Props
+
+Pass callbacks using `EventHandler`:
+
+```rust
+#[component]
+fn ClickableCard(
+    title: String,
+    on_click: EventHandler<()>,
+) -> Element {
+    rsx! {
+        div {
+            class: "card",
+            onclick: move |_| on_click.call(()),
+            "{title}"
+        }
+    }
+}
+
+// Usage
+let mut count = use_signal(|| 0);
+
+rsx! {
+    ClickableCard {
+        title: "Click me!",
+        on_click: move |_| count += 1,
+    }
+}
+```
+
+## Extending Element Attributes
+
+Accept arbitrary HTML attributes using `#[props(extends)]`:
+
+```rust
+#[component]
+fn CustomDiv(
+    #[props(extends = GlobalAttributes)]
+    attributes: Vec<Attribute>,
+    children: Element,
+) -> Element {
+    rsx! {
+        div {
+            ..attributes,
+            {children}
+        }
+    }
+}
+
+// Usage - can use any global attribute
+rsx! {
+    CustomDiv {
+        class: "container",
+        id: "main",
+        style: "padding: 1rem",
+        "Content"
+    }
+}
+```
+
+### Extending Specific Elements
+
+```rust
+#[component]
+fn CustomButton(
+    #[props(extends = GlobalAttributes, extends = button)]
+    attributes: Vec<Attribute>,
+    text: String,
+) -> Element {
+    rsx! {
+        button { ..attributes, "{text}" }
+    }
+}
+
+rsx! {
+    CustomButton {
+        text: "Submit",
+        disabled: true,
+        class: "btn-primary",
+    }
+}
+```
+
+## Prop Spreading
+
+Spread props from a struct:
+
+```rust
+#[component]
+fn StyledButton(
+    text: String,
+    color: String,
+) -> Element {
+    rsx! {
+        button { style: "color: {color}", "{text}" }
+    }
+}
+
+let button_props = StyledButtonProps {
+    text: "Click me".to_string(),
+    color: "blue".to_string(),
+};
+
+rsx! {
+    StyledButton { ..button_props }
+    
+    // Can override individual props
+    StyledButton {
+        text: "Different text",
+        ..button_props
+    }
+}
+```
+
+## Best Practices
+
+<CardGroup cols={2}>
+  <Card title="Use #[component] Macro" icon="wand-magic-sparkles">
+    Prefer `#[component]` over manual `#[derive(Props)]` for better error messages and type checking.
+  </Card>
+  
+  <Card title="Keep Props Simple" icon="shapes">
+    Props should be simple, cloneable types. For complex state, use context or global signals.
+  </Card>
+  
+  <Card title="Implement PartialEq" icon="equals">
+    Always derive `PartialEq` to enable memoization and prevent unnecessary re-renders.
+  </Card>
+  
+  <Card title="Use ReadSignal for Reactivity" icon="signal">
+    Wrap props in `ReadSignal<T>` when you need reactive hooks to respond to changes.
+  </Card>
+</CardGroup>
+
+## See Also
+
+- [Components](/concepts/components) - Learn about component basics
+- [Signals](/concepts/signals) - Understand reactive state with signals  
+- [State](/concepts/state) - Manage component and application state

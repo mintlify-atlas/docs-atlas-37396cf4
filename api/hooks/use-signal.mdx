@@ -1,0 +1,73 @@
+---
+title: 'use_signal'
+description: 'Create a reactive signal for state management with automatic dependency tracking'
+keywords: ['signal', 'state', 'reactive', 'hook']
+---
+
+# use_signal
+
+Creates a new Signal. Signals are a Copy state management solution with automatic dependency tracking.
+
+## Signature
+
+```rust
+pub fn use_signal<T: 'static>(f: impl FnOnce() -> T) -> Signal<T, UnsyncStorage>
+```
+
+## Parameters
+
+<ParamField path="f" type="impl FnOnce() -> T" required>
+  Initialization function that returns the initial value for the signal. This function is only called once when the component is first created.
+</ParamField>
+
+## Returns
+
+<ResponseField name="Signal<T>" type="Signal<T, UnsyncStorage>">
+  A copyable signal handle that can be used to read and write the state value. The signal automatically tracks dependencies and triggers re-renders when the value changes.
+</ResponseField>
+
+## Description
+
+Signals provide automatic dependency tracking for reactive state management. When you read from a signal inside a component, that component automatically subscribes to updates. When the signal's value changes, only the components that read from it will re-render.
+
+Because signals implement `Copy`, they can be used in async blocks and closures without explicit cloning.
+
+<Note>
+  This hook should only be called inside component functions or other hooks. Calling it outside of the component lifecycle will cause memory leaks.
+</Note>
+
+## Example
+
+Basic counter with automatic dependency tracking:
+
+```rust
+use dioxus::prelude::*;
+
+fn App() -> Element {
+    let mut count = use_signal(|| 0);
+
+    // The App component never re-renders because it never reads the count value
+    rsx! { Child { state: count } }
+}
+
+#[component]
+fn Child(state: Signal<u32>) -> Element {
+    use_future(move || async move {
+        // Signals are Copy, so we can use them in async blocks
+        *state.write() += 1;
+    });
+
+    rsx! {
+        button {
+            onclick: move |_| *state.write() += 1,
+            "{state}"
+        }
+    }
+}
+```
+
+## Related
+
+- `use_signal_sync` - Create a `Send + Sync` signal for use across threads
+- `use_effect` - Run side effects when signals change
+- `use_memo` - Compute derived values from signals

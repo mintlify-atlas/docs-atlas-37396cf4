@@ -1,0 +1,965 @@
+---
+title: Event Handlers
+description: Complete reference of all event handlers available in Dioxus HTML elements
+---
+
+Dioxus provides comprehensive event handling for HTML elements through type-safe event handlers. All events are handled through the `on*` attributes.
+
+## Mouse Events
+
+Mouse events are triggered by mouse interactions with elements.
+
+### onclick
+
+Fired when a mouse button is clicked (pressed and released) on an element.
+
+```rust
+rsx! {
+    button { 
+        onclick: move |event| {
+            println!("Clicked at: {:?}", event.coordinates());
+        },
+        "Click me"
+    }
+}
+```
+
+**Event Data:** `MouseData`
+- `coordinates()` - Element, page, client, and screen coordinates
+- `held_buttons()` - Set of mouse buttons currently held
+- `trigger_button()` - Which button triggered the event
+- `modifiers()` - Keyboard modifiers (Ctrl, Alt, Shift, Meta)
+
+**Bubbles:** Yes | **Cancelable:** Yes
+
+**Reference:** [MDN](https://developer.mozilla.org/en-US/docs/Web/API/Element/click_event)
+
+### ondoubleclick
+
+Fired when a mouse button is double-clicked on an element.
+
+```rust
+rsx! {
+    div { 
+        ondoubleclick: move |_| println!("Double clicked!"),
+        "Double click me"
+    }
+}
+```
+
+**Event Data:** `MouseData`
+
+**Reference:** [MDN](https://developer.mozilla.org/en-US/docs/Web/API/Element/dblclick_event)
+
+### oncontextmenu
+
+Fired when the right mouse button is clicked (before context menu appears).
+
+```rust
+rsx! {
+    div { 
+        oncontextmenu: move |event| {
+            event.prevent_default();
+            println!("Custom context menu");
+        },
+        "Right click me"
+    }
+}
+```
+
+**Event Data:** `MouseData`
+
+**Reference:** [MDN](https://developer.mozilla.org/en-US/docs/Web/API/Element/contextmenu_event)
+
+### onmousedown
+
+Fired when a mouse button is pressed on an element.
+
+```rust
+rsx! {
+    div { 
+        onmousedown: move |event| {
+            println!("Mouse down: {:?}", event.trigger_button());
+        },
+        "Press mouse here"
+    }
+}
+```
+
+**Event Data:** `MouseData`
+
+**Reference:** [MDN](https://developer.mozilla.org/en-US/docs/Web/API/Element/mousedown_event)
+
+### onmouseup
+
+Fired when a mouse button is released on an element.
+
+```rust
+rsx! {
+    div { onmouseup: move |_| println!("Mouse up"), "Release here" }
+}
+```
+
+**Event Data:** `MouseData`
+
+**Reference:** [MDN](https://developer.mozilla.org/en-US/docs/Web/API/Element/mouseup_event)
+
+### onmousemove
+
+Fired when the mouse pointer moves over an element.
+
+```rust
+rsx! {
+    div { 
+        onmousemove: move |event| {
+            let coords = event.element_coordinates();
+            println!("Mouse at: ({}, {})", coords.x, coords.y);
+        },
+        "Move mouse here"
+    }
+}
+```
+
+**Event Data:** `MouseData`
+
+**Reference:** [MDN](https://developer.mozilla.org/en-US/docs/Web/API/Element/mousemove_event)
+
+### onmouseenter
+
+Fired when the mouse pointer enters an element (does not bubble).
+
+```rust
+rsx! {
+    div { onmouseenter: move |_| println!("Mouse entered"), "Hover zone" }
+}
+```
+
+**Event Data:** `MouseData`
+
+**Bubbles:** No
+
+**Reference:** [MDN](https://developer.mozilla.org/en-US/docs/Web/API/Element/mouseenter_event)
+
+### onmouseleave
+
+Fired when the mouse pointer leaves an element (does not bubble).
+
+```rust
+rsx! {
+    div { onmouseleave: move |_| println!("Mouse left"), "Hover zone" }
+}
+```
+
+**Event Data:** `MouseData`
+
+**Bubbles:** No
+
+**Reference:** [MDN](https://developer.mozilla.org/en-US/docs/Web/API/Element/mouseleave_event)
+
+### onmouseover
+
+Fired when the mouse pointer moves onto an element (bubbles).
+
+```rust
+rsx! {
+    div { onmouseover: move |_| println!("Mouse over"), "Content" }
+}
+```
+
+**Event Data:** `MouseData`
+
+**Reference:** [MDN](https://developer.mozilla.org/en-US/docs/Web/API/Element/mouseover_event)
+
+### onmouseout
+
+Fired when the mouse pointer moves out of an element (bubbles).
+
+```rust
+rsx! {
+    div { onmouseout: move |_| println!("Mouse out"), "Content" }
+}
+```
+
+**Event Data:** `MouseData`
+
+**Reference:** [MDN](https://developer.mozilla.org/en-US/docs/Web/API/Element/mouseout_event)
+
+## Keyboard Events
+
+Keyboard events are triggered by keyboard interactions.
+
+### onkeydown
+
+Fired when a key is pressed down.
+
+```rust
+use dioxus::prelude::*;
+use keyboard_types::{Code, Key};
+
+rsx! {
+    input { 
+        onkeydown: move |event| {
+            if event.key() == Key::Enter {
+                println!("Enter pressed!");
+            }
+            if event.code() == Code::KeyA && event.modifiers().ctrl() {
+                println!("Ctrl+A pressed!");
+            }
+        }
+    }
+}
+```
+
+**Event Data:** `KeyboardData`
+- `key()` - Key value (considers modifiers and layout)
+- `code()` - Physical key code
+- `location()` - Physical location of the key
+- `is_auto_repeating()` - Whether the key is being held
+- `is_composing()` - Whether key is part of composition
+- `modifiers()` - Active modifier keys (Ctrl, Alt, Shift, Meta)
+
+**Reference:** [MDN](https://developer.mozilla.org/en-US/docs/Web/API/Element/keydown_event)
+
+### onkeyup
+
+Fired when a key is released.
+
+```rust
+rsx! {
+    input { onkeyup: move |event| println!("Key: {:?}", event.key()) }
+}
+```
+
+**Event Data:** `KeyboardData`
+
+**Reference:** [MDN](https://developer.mozilla.org/en-US/docs/Web/API/Element/keyup_event)
+
+### onkeypress
+
+Fired when a key that produces a character value is pressed down.
+
+```rust
+rsx! {
+    input { onkeypress: move |event| println!("Char: {:?}", event.key()) }
+}
+```
+
+**Event Data:** `KeyboardData`
+
+**Note:** This event is deprecated in favor of `onkeydown`.
+
+**Reference:** [MDN](https://developer.mozilla.org/en-US/docs/Web/API/Element/keypress_event)
+
+## Form Events
+
+Form events are triggered by form control interactions.
+
+### oninput
+
+Fired when the value of an input, select, or textarea changes.
+
+```rust
+let mut value = use_signal(|| String::new());
+
+rsx! {
+    input {
+        value: "{value}",
+        oninput: move |event| value.set(event.value())
+    }
+    p { "Value: {value}" }
+}
+```
+
+**Event Data:** `FormData`
+- `value()` - Current value as string
+- `parsed<T>()` - Parse value to type T
+- `checked()` - For checkboxes (returns bool)
+- `values()` - All form values (for forms)
+- `files()` - Selected files (for file inputs)
+
+**Reference:** [MDN](https://developer.mozilla.org/en-US/docs/Web/API/HTMLElement/input_event)
+
+### onchange
+
+Fired when the value of an input element is committed.
+
+```rust
+rsx! {
+    input { 
+        onchange: move |event| {
+            println!("Changed to: {}", event.value());
+        }
+    }
+}
+```
+
+**Event Data:** `FormData`
+
+**Difference from oninput:** `onchange` fires when the value is committed (e.g., on blur for text inputs), while `oninput` fires on every change.
+
+**Reference:** [MDN](https://developer.mozilla.org/en-US/docs/Web/API/HTMLElement/change_event)
+
+### onsubmit
+
+Fired when a form is submitted.
+
+```rust
+rsx! {
+    form {
+        onsubmit: move |event| {
+            event.prevent_default();
+            let values = event.values();
+            println!("Form submitted: {:?}", values);
+        },
+        input { name: "username" }
+        button { r#type: "submit", "Submit" }
+    }
+}
+```
+
+**Event Data:** `FormData`
+
+**Reference:** [MDN](https://developer.mozilla.org/en-US/docs/Web/API/HTMLFormElement/submit_event)
+
+### onreset
+
+Fired when a form is reset.
+
+```rust
+rsx! {
+    form {
+        onreset: move |_| println!("Form reset"),
+        button { r#type: "reset", "Reset" }
+    }
+}
+```
+
+**Event Data:** `FormData`
+
+**Reference:** [MDN](https://developer.mozilla.org/en-US/docs/Web/API/HTMLFormElement/reset_event)
+
+### oninvalid
+
+Fired when a form control fails validation.
+
+```rust
+rsx! {
+    input {
+        required: true,
+        oninvalid: move |_| println!("Invalid input!")
+    }
+}
+```
+
+**Event Data:** `FormData`
+
+**Reference:** [MDN](https://developer.mozilla.org/en-US/docs/Web/API/HTMLInputElement/invalid_event)
+
+## Focus Events
+
+Focus events are triggered when elements gain or lose focus.
+
+### onfocus
+
+Fired when an element receives focus (does not bubble).
+
+```rust
+rsx! {
+    input { onfocus: move |_| println!("Input focused") }
+}
+```
+
+**Event Data:** `FocusData`
+
+**Bubbles:** No
+
+**Reference:** [MDN](https://developer.mozilla.org/en-US/docs/Web/API/Element/focus_event)
+
+### onblur
+
+Fired when an element loses focus (does not bubble).
+
+```rust
+rsx! {
+    input { onblur: move |_| println!("Input blurred") }
+}
+```
+
+**Event Data:** `FocusData`
+
+**Bubbles:** No
+
+**Reference:** [MDN](https://developer.mozilla.org/en-US/docs/Web/API/Element/blur_event)
+
+### onfocusin
+
+Fired when an element is about to receive focus (bubbles).
+
+```rust
+rsx! {
+    div { 
+        onfocusin: move |_| println!("Focus entering"),
+        input {}
+    }
+}
+```
+
+**Event Data:** `FocusData`
+
+**Reference:** [MDN](https://developer.mozilla.org/en-US/docs/Web/API/Element/focusin_event)
+
+### onfocusout
+
+Fired when an element is about to lose focus (bubbles).
+
+```rust
+rsx! {
+    div { 
+        onfocusout: move |_| println!("Focus leaving"),
+        input {}
+    }
+}
+```
+
+**Event Data:** `FocusData`
+
+**Reference:** [MDN](https://developer.mozilla.org/en-US/docs/Web/API/Element/focusout_event)
+
+## Clipboard Events
+
+Clipboard events are triggered by clipboard operations.
+
+### oncopy
+
+Fired when content is copied.
+
+```rust
+rsx! {
+    div { oncopy: move |_| println!("Content copied"), "Copy this text" }
+}
+```
+
+**Event Data:** `ClipboardData`
+
+**Reference:** [MDN](https://developer.mozilla.org/en-US/docs/Web/API/Element/copy_event)
+
+### oncut
+
+Fired when content is cut.
+
+```rust
+rsx! {
+    input { oncut: move |_| println!("Content cut") }
+}
+```
+
+**Event Data:** `ClipboardData`
+
+**Reference:** [MDN](https://developer.mozilla.org/en-US/docs/Web/API/Element/cut_event)
+
+### onpaste
+
+Fired when content is pasted.
+
+```rust
+rsx! {
+    input { onpaste: move |_| println!("Content pasted") }
+}
+```
+
+**Event Data:** `ClipboardData`
+
+**Reference:** [MDN](https://developer.mozilla.org/en-US/docs/Web/API/Element/paste_event)
+
+## Drag Events
+
+Drag events are triggered during drag-and-drop operations.
+
+### ondrag
+
+Fired continuously while an element is being dragged.
+
+```rust
+rsx! {
+    div { 
+        draggable: "true",
+        ondrag: move |_| println!("Dragging..."),
+        "Drag me"
+    }
+}
+```
+
+**Event Data:** `DragData`
+
+**Reference:** [MDN](https://developer.mozilla.org/en-US/docs/Web/API/HTMLElement/drag_event)
+
+### ondragstart
+
+Fired when a drag operation starts.
+
+```rust
+rsx! {
+    div { 
+        draggable: "true",
+        ondragstart: move |event| {
+            println!("Drag started");
+        },
+        "Drag me"
+    }
+}
+```
+
+**Event Data:** `DragData`
+
+**Reference:** [MDN](https://developer.mozilla.org/en-US/docs/Web/API/HTMLElement/dragstart_event)
+
+### ondragend
+
+Fired when a drag operation ends.
+
+```rust
+rsx! {
+    div { 
+        draggable: "true",
+        ondragend: move |_| println!("Drag ended"),
+        "Drag me"
+    }
+}
+```
+
+**Event Data:** `DragData`
+
+**Reference:** [MDN](https://developer.mozilla.org/en-US/docs/Web/API/HTMLElement/dragend_event)
+
+### ondragenter
+
+Fired when a dragged element enters a drop target.
+
+```rust
+rsx! {
+    div { 
+        ondragenter: move |_| println!("Drag enter"),
+        "Drop zone"
+    }
+}
+```
+
+**Event Data:** `DragData`
+
+**Reference:** [MDN](https://developer.mozilla.org/en-US/docs/Web/API/HTMLElement/dragenter_event)
+
+### ondragleave
+
+Fired when a dragged element leaves a drop target.
+
+```rust
+rsx! {
+    div { 
+        ondragleave: move |_| println!("Drag leave"),
+        "Drop zone"
+    }
+}
+```
+
+**Event Data:** `DragData`
+
+**Reference:** [MDN](https://developer.mozilla.org/en-US/docs/Web/API/HTMLElement/dragleave_event)
+
+### ondragover
+
+Fired when a dragged element is over a drop target.
+
+```rust
+rsx! {
+    div { 
+        ondragover: move |event| {
+            event.prevent_default(); // Required to allow drop
+        },
+        "Drop zone"
+    }
+}
+```
+
+**Event Data:** `DragData`
+
+**Reference:** [MDN](https://developer.mozilla.org/en-US/docs/Web/API/HTMLElement/dragover_event)
+
+### ondrop
+
+Fired when an element is dropped.
+
+```rust
+rsx! {
+    div { 
+        ondragover: move |e| e.prevent_default(),
+        ondrop: move |event| {
+            event.prevent_default();
+            println!("Dropped!");
+        },
+        "Drop zone"
+    }
+}
+```
+
+**Event Data:** `DragData`
+
+**Reference:** [MDN](https://developer.mozilla.org/en-US/docs/Web/API/HTMLElement/drop_event)
+
+## Scroll Events
+
+### onscroll
+
+Fired when an element is scrolled.
+
+```rust
+rsx! {
+    div { 
+        onscroll: move |_| println!("Scrolling..."),
+        style: "height: 200px; overflow: auto;",
+        div { style: "height: 1000px;", "Scrollable content" }
+    }
+}
+```
+
+**Event Data:** `ScrollData`
+
+**Reference:** [MDN](https://developer.mozilla.org/en-US/docs/Web/API/Element/scroll_event)
+
+## Media Events
+
+### onplay
+
+Fired when media playback starts.
+
+```rust
+rsx! {
+    video { src: "/video.mp4", onplay: move |_| println!("Playing") }
+}
+```
+
+**Event Data:** `MediaData`
+
+**Reference:** [MDN](https://developer.mozilla.org/en-US/docs/Web/API/HTMLMediaElement/play_event)
+
+### onpause
+
+Fired when media playback is paused.
+
+```rust
+rsx! {
+    video { src: "/video.mp4", onpause: move |_| println!("Paused") }
+}
+```
+
+**Event Data:** `MediaData`
+
+**Reference:** [MDN](https://developer.mozilla.org/en-US/docs/Web/API/HTMLMediaElement/pause_event)
+
+### onended
+
+Fired when media playback reaches the end.
+
+```rust
+rsx! {
+    audio { src: "/audio.mp3", onended: move |_| println!("Finished") }
+}
+```
+
+**Event Data:** `MediaData`
+
+**Reference:** [MDN](https://developer.mozilla.org/en-US/docs/Web/API/HTMLMediaElement/ended_event)
+
+## Pointer Events
+
+Pointer events provide a unified model for mouse, touch, and pen input.
+
+### onpointerdown
+
+Fired when a pointer becomes active.
+
+```rust
+rsx! {
+    div { 
+        onpointerdown: move |event| {
+            println!("Pointer type: {:?}", event.pointer_type());
+        },
+        "Touch or click here"
+    }
+}
+```
+
+**Event Data:** `PointerData`
+- `pointer_type()` - Type of pointer (mouse, touch, pen)
+- `pointer_id()` - Unique identifier
+- `pressure()` - Pressure applied
+- `width()`, `height()` - Contact geometry
+
+**Reference:** [MDN](https://developer.mozilla.org/en-US/docs/Web/API/Element/pointerdown_event)
+
+### onpointerup
+
+Fired when a pointer is no longer active.
+
+**Event Data:** `PointerData`
+
+**Reference:** [MDN](https://developer.mozilla.org/en-US/docs/Web/API/Element/pointerup_event)
+
+### onpointermove
+
+Fired when a pointer moves.
+
+**Event Data:** `PointerData`
+
+**Reference:** [MDN](https://developer.mozilla.org/en-US/docs/Web/API/Element/pointermove_event)
+
+## Touch Events
+
+Touch events provide information about touch interactions.
+
+### ontouchstart
+
+Fired when a touch point is placed on the touch surface.
+
+```rust
+rsx! {
+    div { ontouchstart: move |_| println!("Touch start"), "Touch here" }
+}
+```
+
+**Event Data:** `TouchData`
+
+**Reference:** [MDN](https://developer.mozilla.org/en-US/docs/Web/API/Element/touchstart_event)
+
+### ontouchmove
+
+Fired when a touch point moves along the touch surface.
+
+**Event Data:** `TouchData`
+
+**Reference:** [MDN](https://developer.mozilla.org/en-US/docs/Web/API/Element/touchmove_event)
+
+### ontouchend
+
+Fired when a touch point is removed from the touch surface.
+
+**Event Data:** `TouchData`
+
+**Reference:** [MDN](https://developer.mozilla.org/en-US/docs/Web/API/Element/touchend_event)
+
+### ontouchcancel
+
+Fired when a touch point has been disrupted.
+
+**Event Data:** `TouchData`
+
+**Reference:** [MDN](https://developer.mozilla.org/en-US/docs/Web/API/Element/touchcancel_event)
+
+## Wheel Events
+
+### onwheel
+
+Fired when a wheel button of a pointing device is rotated.
+
+```rust
+rsx! {
+    div { 
+        onwheel: move |event| {
+            println!("Delta Y: {}", event.delta_y());
+        },
+        "Scroll with wheel"
+    }
+}
+```
+
+**Event Data:** `WheelData`
+- `delta_x()`, `delta_y()`, `delta_z()` - Scroll amounts
+- `delta_mode()` - Unit of delta values
+
+**Reference:** [MDN](https://developer.mozilla.org/en-US/docs/Web/API/Element/wheel_event)
+
+## Animation Events
+
+### onanimationstart
+
+Fired when a CSS animation starts.
+
+```rust
+rsx! {
+    div { 
+        onanimationstart: move |_| println!("Animation started"),
+        style: "animation: slide 1s;",
+        "Animated"
+    }
+}
+```
+
+**Event Data:** `AnimationData`
+
+**Reference:** [MDN](https://developer.mozilla.org/en-US/docs/Web/API/Element/animationstart_event)
+
+### onanimationend
+
+Fired when a CSS animation ends.
+
+**Event Data:** `AnimationData`
+
+**Reference:** [MDN](https://developer.mozilla.org/en-US/docs/Web/API/Element/animationend_event)
+
+### onanimationiteration
+
+Fired when a CSS animation iteration completes.
+
+**Event Data:** `AnimationData`
+
+**Reference:** [MDN](https://developer.mozilla.org/en-US/docs/Web/API/Element/animationiteration_event)
+
+## Transition Events
+
+### ontransitionend
+
+Fired when a CSS transition completes.
+
+```rust
+rsx! {
+    div { 
+        ontransitionend: move |_| println!("Transition done"),
+        style: "transition: opacity 0.3s;",
+        "Fading"
+    }
+}
+```
+
+**Event Data:** `TransitionData`
+
+**Reference:** [MDN](https://developer.mozilla.org/en-US/docs/Web/API/Element/transitionend_event)
+
+## Mounted Events
+
+### onmounted
+
+Special Dioxus event fired when an element is mounted to the DOM.
+
+```rust
+rsx! {
+    div { 
+        onmounted: move |element| {
+            // Access the mounted DOM element
+            println!("Element mounted: {:?}", element);
+        },
+        "Content"
+    }
+}
+```
+
+**Event Data:** `MountedData`
+- Access to the underlying DOM element
+- Useful for measuring, focusing, or integrating with JavaScript
+
+## Event Methods
+
+All events provide these common methods:
+
+### prevent_default()
+
+Prevents the default browser action.
+
+```rust
+rsx! {
+    a { 
+        href: "https://example.com",
+        onclick: move |event| {
+            event.prevent_default();
+            println!("Link click prevented");
+        },
+        "Link"
+    }
+}
+```
+
+### stop_propagation()
+
+Stops the event from bubbling up to parent elements.
+
+```rust
+rsx! {
+    div { 
+        onclick: move |_| println!("Outer"),
+        button { 
+            onclick: move |event| {
+                event.stop_propagation();
+                println!("Inner only");
+            },
+            "Click"
+        }
+    }
+}
+```
+
+## Async Event Handlers
+
+Event handlers can be async:
+
+```rust
+rsx! {
+    button {
+        onclick: move |_| async move {
+            let result = fetch_data().await;
+            println!("Result: {:?}", result);
+        },
+        "Fetch"
+    }
+}
+```
+
+## Event Handler Patterns
+
+### Capturing Values
+
+```rust
+let mut count = use_signal(|| 0);
+
+rsx! {
+    button {
+        onclick: move |_| count += 1,
+        "Count: {count}"
+    }
+}
+```
+
+### Extracting Event Data
+
+```rust
+rsx! {
+    input {
+        oninput: move |event| {
+            let value = event.value();
+            let parsed: i32 = event.parsed().unwrap_or(0);
+            println!("Value: {}, Parsed: {}", value, parsed);
+        }
+    }
+}
+```
+
+### Inline Event Handlers
+
+```rust
+rsx! {
+    button { onclick: move |_| println!("Clicked"), "Click" }
+}
+```
+
+### Named Event Handlers
+
+```rust
+let handle_click = move |_| println!("Clicked");
+
+rsx! {
+    button { onclick: handle_click, "Click" }
+}
+```
+
+## See Also
+
+- [HTML Elements](/api/html/elements) - Complete list of HTML elements
+- [HTML Attributes](/api/html/attributes) - Available attributes
+- [Interactivity Guide](/guide/interactivity) - Learn more about event handling in Dioxus

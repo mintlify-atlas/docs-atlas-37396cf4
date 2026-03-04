@@ -1,0 +1,472 @@
+---
+title: Asset Management
+description: Use the asset!() macro for compile-time asset optimization
+---
+
+Manganis provides compile-time asset management through the `asset!()` macro, enabling automatic optimization, cache-busting, and type-safe asset references.
+
+## Asset Macro Basics
+
+The `asset!()` macro resolves and bundles assets at compile time:
+
+```rust
+use manganis::asset;
+
+const LOGO: Asset = asset!("/assets/logo.png");
+const STYLESHEET: Asset = asset!("/assets/styles.css");
+
+fn app() -> Element {
+    rsx! {
+        img { src: LOGO }
+        link { rel: "stylesheet", href: STYLESHEET }
+    }
+}
+```
+
+Benefits:
+- Compile-time path validation
+- Automatic optimization
+- Cache-busting via content hashing
+- Type-safe references
+
+## How It Works
+
+### Compilation Flow
+
+1. **Macro Expansion**: `asset!()` resolves path at compile time
+2. **Link Section**: Embeds asset metadata in binary via linker symbol
+3. **CLI Processing**: `dx` reads symbols, optimizes assets, updates paths
+4. **Runtime Resolution**: Asset resolves to optimized bundled path
+
+**Reference**: `packages/manganis/manganis-macro/src/asset.rs:60-128`
+
+### Link Section Generation
+
+The macro creates two link sections for backward compatibility:
+
+```rust
+const __ASSET: BundledAsset = manganis::macro_helpers::create_bundled_asset(
+    "/absolute/path/to/asset.png",
+    AssetOptions::default()
+);
+
+#[link_section = "__ASSETS__abc123"]
+static __LINK_SECTION: &[u8] = &serialize_const!(__ASSET);
+
+#[link_section = "__MANGANIS__abc123"]
+static __LEGACY_LINK_SECTION: &[u8] = &serialize_const!(__ASSET);
+```
+
+The CLI reads these sections, processes the assets, and patches the serialized data with actual bundled paths.
+
+**Reference**: `packages/manganis/manganis-core/src/asset.rs:22-98`
+
+## Asset Options
+
+### Image Assets
+
+Optimize images with format conversion and resizing:
+
+```rust
+use manganis::{asset, Asset, AssetOptions, ImageFormat, ImageSize};
+
+// Convert to WebP for better compression
+const HERO: Asset = asset!(
+    "/assets/hero.png",
+    AssetOptions::image()
+        .with_format(ImageFormat::Webp)
+);
+
+// Resize for thumbnails
+const THUMB: Asset = asset!(
+    "/assets/photo.jpg",
+    AssetOptions::image()
+        .with_format(ImageFormat::Webp)
+        .with_size(ImageSize::Manual { width: 256, height: 256 })
+);
+
+// Preload critical images
+const LOGO: Asset = asset!(
+    "/assets/logo.svg",
+    AssetOptions::image()
+        .with_preload(true)
+);
+```
+
+Supported formats:
+- `ImageFormat::Png`
+- `ImageFormat::Jpg`
+- `ImageFormat::Webp` (recommended for web)
+- `ImageFormat::Avif` (best compression, limited browser support)
+
+**Reference**: `packages/manganis/manganis-core/src/images.rs:22-243`
+
+### CSS Assets
+
+Optimize stylesheets:
+
+```rust
+use manganis::{asset, Asset, AssetOptions};
+
+const STYLES: Asset = asset!(
+    "/assets/styles.css",
+    AssetOptions::css()
+        .with_minify(true)
+        .with_preload(true)
+);
+```
+
+Options:
+- `with_minify(bool)`: Minify CSS (default: true)
+- `with_preload(bool)`: Add preload hint
+- `with_static_head(bool)`: Include in static HTML head
+
+### JavaScript Assets
+
+```rust
+use manganis::{asset, Asset, AssetOptions};
+
+const SCRIPT: Asset = asset!(
+    "/assets/analytics.js",
+    AssetOptions::js()
+        .with_minify(true)
+        .with_preload(false)
+);
+```
+
+Options:
+- `with_minify(bool)`: Minify JavaScript (default: true)
+- `with_preload(bool)`: Add preload hint
+- `with_static_head(bool)`: Include in static HTML head
+
+### Folder Assets
+
+Bundle entire directories:
+
+```rust
+use manganis::{asset, Asset, AssetOptions};
+
+const ICONS: Asset = asset!(
+    "/assets/icons/",
+    AssetOptions::folder()
+);
+```
+
+All files in the folder are included and optimized based on their type.
+
+## CSS Modules
+
+CSS modules provide scoped styling with compile-time class name generation:
+
+```rust
+use manganis::css_module;
+
+css_module!(Styles = "/styles/component.module.css");
+
+fn Component() -> Element {
+    rsx! {
+        div { class: Styles::container,
+            h1 { class: Styles::heading, "Hello" }
+            p { class: Styles::text, "World" }
+        }
+    }
+}
+```
+
+**Input CSS** (`component.module.css`):
+```css
+.container {
+    padding: 20px;
+}
+
+.heading {
+    font-size: 24px;
+    color: #333;
+}
+
+.text {
+    color: #666;
+}
+```
+
+**Generated Code**:
+```rust
+struct Styles {}
+impl Styles {
+    pub const container: &str = "container_a1b2c3";
+    pub const heading: &str = "heading_a1b2c3";
+    pub const text: &str = "text_a1b2c3";
+}
+```
+
+Class names are automatically scoped with a hash to prevent collisions.
+
+**Reference**: Architecture doc `notes/architecture/08-ASSETS.md:80-95`
+
+## Asset Resolution
+
+Assets resolve differently based on environment:
+
+### Development Mode
+
+```rust
+const LOGO: Asset = asset!("/assets/logo.png");
+
+// In development (dx serve):
+println!("{}", LOGO);  // /absolute/path/to/project/assets/logo.png
+```
+
+Uses absolute source path for easy debugging.
+
+### Production Mode
+
+```rust
+const LOGO: Asset = asset!("/assets/logo.png");
+
+// In production build:
+println!("{}", LOGO);  // /assets/logo.abc123.png
+```
+
+Uses optimized path with content hash for cache-busting.
+
+**Reference**: `packages/manganis/manganis-core/src/asset.rs:185-216`
+
+## Advanced Usage
+
+### Optional Assets
+
+Handle assets that may not exist:
+
+```rust
+use manganis::option_asset;
+
+const OPTIONAL: Option<Asset> = option_asset!("/assets/optional.png");
+
+fn Component() -> Element {
+    rsx! {
+        if let Some(asset) = OPTIONAL {
+            img { src: asset }
+        } else {
+            div { "Asset not available" }
+        }
+    }
+}
+```
+
+### Dynamic Asset Loading
+
+For runtime-determined assets, use standard file loading:
+
+```rust
+use std::fs;
+
+fn load_user_avatar(user_id: &str) -> Result<Vec<u8>, std::io::Error> {
+    let path = format!("./uploads/{}.png", user_id);
+    fs::read(path)
+}
+```
+
+Note: Dynamic paths cannot use `asset!()` macro since they're not known at compile time.
+
+### Asset Variants
+
+Generate multiple variants of the same asset:
+
+```rust
+use manganis::{asset, Asset, AssetOptions, ImageFormat, ImageSize};
+
+// Full size WebP
+const FULL: Asset = asset!(
+    "/assets/photo.jpg",
+    AssetOptions::image().with_format(ImageFormat::Webp)
+);
+
+// Thumbnail
+const THUMB: Asset = asset!(
+    "/assets/photo.jpg",
+    AssetOptions::image()
+        .with_format(ImageFormat::Webp)
+        .with_size(ImageSize::Manual { width: 200, height: 200 })
+);
+
+fn Gallery() -> Element {
+    rsx! {
+        a { href: FULL,
+            img { src: THUMB, alt: "Photo thumbnail" }
+        }
+    }
+}
+```
+
+## Cache Busting
+
+Manganis automatically implements cache-busting:
+
+```rust
+const LOGO: Asset = asset!("/assets/logo.png");
+
+// Development: /assets/logo.png
+// Production: /assets/logo.a1b2c3d4.png
+```
+
+The hash changes when content changes, ensuring browsers fetch the latest version.
+
+### Controlling Hashing
+
+```rust
+use manganis::{asset, Asset, AssetOptions};
+
+// Disable hashing for specific assets
+const MANIFEST: Asset = asset!(
+    "/assets/manifest.json",
+    AssetOptions::builder().with_add_hash(false)
+);
+```
+
+## Performance Optimization
+
+### Preloading Critical Assets
+
+```rust
+const HERO_IMAGE: Asset = asset!(
+    "/assets/hero.jpg",
+    AssetOptions::image()
+        .with_format(ImageFormat::Webp)
+        .with_preload(true)  // Start loading immediately
+);
+
+const HERO_CSS: Asset = asset!(
+    "/assets/hero.css",
+    AssetOptions::css()
+        .with_preload(true)
+        .with_static_head(true)  // Include in <head>
+);
+```
+
+### Image Format Optimization
+
+Choose formats based on use case:
+
+```rust
+// Photos: Use WebP or AVIF
+const PHOTO: Asset = asset!(
+    "/assets/photo.jpg",
+    AssetOptions::image().with_format(ImageFormat::Webp)
+);
+
+// Graphics with transparency: Use WebP or PNG
+const ICON: Asset = asset!(
+    "/assets/icon.png",
+    AssetOptions::image().with_format(ImageFormat::Webp)
+);
+
+// Simple graphics: Use PNG
+const LOGO: Asset = asset!(
+    "/assets/logo.png",
+    AssetOptions::image().with_format(ImageFormat::Png)
+);
+```
+
+### Responsive Images
+
+Generate multiple sizes:
+
+```rust
+const HERO_MOBILE: Asset = asset!(
+    "/assets/hero.jpg",
+    AssetOptions::image()
+        .with_format(ImageFormat::Webp)
+        .with_size(ImageSize::Manual { width: 800, height: 600 })
+);
+
+const HERO_DESKTOP: Asset = asset!(
+    "/assets/hero.jpg",
+    AssetOptions::image()
+        .with_format(ImageFormat::Webp)
+        .with_size(ImageSize::Manual { width: 1920, height: 1080 })
+);
+
+fn Hero() -> Element {
+    rsx! {
+        picture {
+            source { srcset: HERO_DESKTOP, media: "(min-width: 1024px)" }
+            img { src: HERO_MOBILE, alt: "Hero image" }
+        }
+    }
+}
+```
+
+## Platform-Specific Assets
+
+### Mobile Assets (Android/iOS)
+
+Manganis integrates with mobile platform APIs:
+
+```rust
+// Android: Assets included in APK
+const APP_ICON: Asset = asset!("/assets/icon.png");
+
+// iOS: Assets in app bundle
+const SPLASH: Asset = asset!("/assets/splash.png");
+```
+
+The CLI handles platform-specific bundling automatically.
+
+### Web Assets
+
+For web targets, assets are served from the assets directory:
+
+```rust
+// Served from /assets/ path
+const FAVICON: Asset = asset!("/assets/favicon.ico");
+```
+
+## Troubleshooting
+
+### Asset Not Found
+
+```rust
+// Error: Asset does not exist
+const MISSING: Asset = asset!("/assets/missing.png");
+```
+
+Ensure:
+1. Path is relative to crate root
+2. File exists at compile time
+3. Path is within crate directory (no `..` escaping)
+
+### Hash Mismatch
+
+If you see hash mismatches, ensure:
+- Using matching versions of `dx` CLI and `manganis`
+- Not stripping symbols from binary
+- Not using `--no-mangle` or similar flags
+
+### Memory Issues
+
+If bundling many large assets:
+
+```rust
+// Use references instead of copying
+const VIDEO: Asset = asset!(
+    "/assets/video.mp4",
+    AssetOptions::builder().with_add_hash(false)
+);
+```
+
+Or keep large assets external and load at runtime.
+
+## Best Practices
+
+1. **Use `const`**: Define assets as constants for compile-time checking
+2. **Optimize Images**: Always specify format options for images
+3. **Preload Sparingly**: Only preload critical above-the-fold assets
+4. **CSS Modules**: Use for component-scoped styles
+5. **Cache Busting**: Let manganis handle it automatically
+6. **Development**: Assets work without `dx serve`, using source paths
+
+## Additional Resources
+
+- Asset architecture: `notes/architecture/08-ASSETS.md`
+- Manganis source: `packages/manganis/`
+- Asset types: `packages/manganis/manganis-core/src/`

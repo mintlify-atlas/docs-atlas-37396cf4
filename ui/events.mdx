@@ -1,0 +1,471 @@
+---
+title: Event Handlers
+description: Learn how to handle user interactions in Dioxus with event handlers
+---
+
+Event handlers allow your Dioxus components to respond to user interactions like clicks, keyboard input, and mouse movements.
+
+## Basic Event Handlers
+
+### Click Events
+
+The most common event is `onclick`:
+
+```rust
+use dioxus::prelude::*;
+
+fn app() -> Element {
+    rsx! {
+        button {
+            onclick: move |_| {
+                println!("Button clicked!");
+            },
+            "Click me"
+        }
+    }
+}
+```
+
+### Event Handler Syntax
+
+Event handlers use the `move |event|` syntax:
+
+```rust
+rsx! {
+    button {
+        onclick: move |event| {
+            // event contains information about the click
+            println!("Clicked at: {:?}", event.coordinates());
+        },
+        "Click me"
+    }
+}
+```
+
+## Working with State
+
+### Updating Signals
+
+Combine event handlers with signals for reactive UIs:
+
+```rust
+fn app() -> Element {
+    let mut count = use_signal(|| 0);
+    
+    rsx! {
+        div {
+            h1 { "Count: {count}" }
+            button {
+                onclick: move |_| count += 1,
+                "Increment"
+            }
+            button {
+                onclick: move |_| count -= 1,
+                "Decrement"
+            }
+        }
+    }
+}
+```
+
+### Accessing Event Data
+
+```rust
+fn app() -> Element {
+    let mut position = use_signal(|| (0, 0));
+    
+    rsx! {
+        div {
+            onmousemove: move |event| {
+                let coords = event.client_coordinates();
+                position.set((coords.x as i32, coords.y as i32));
+            },
+            "Mouse position: {position().0}, {position().1}"
+        }
+    }
+}
+```
+
+## Mouse Events
+
+### Available Mouse Events
+
+```rust
+rsx! {
+    div {
+        // Click events
+        onclick: move |event| {},
+        ondoubleclick: move |event| {},
+        oncontextmenu: move |event| {},
+        
+        // Mouse button events
+        onmousedown: move |event| {},
+        onmouseup: move |event| {},
+        
+        // Mouse movement
+        onmousemove: move |event| {},
+        onmouseenter: move |event| {},
+        onmouseleave: move |event| {},
+        onmouseover: move |event| {},
+        onmouseout: move |event| {},
+    }
+}
+```
+
+### Mouse Event Data
+
+```rust
+fn app() -> Element {
+    rsx! {
+        div {
+            onclick: move |event| {
+                // Get mouse coordinates
+                let coords = event.coordinates();
+                println!("Element X: {}, Y: {}", coords.x, coords.y);
+                
+                // Check modifier keys
+                if event.modifiers().shift() {
+                    println!("Shift key held");
+                }
+                
+                // Get button information
+                if let Some(button) = event.trigger_button() {
+                    println!("Button: {:?}", button);
+                }
+            },
+            "Click anywhere"
+        }
+    }
+}
+```
+
+## Keyboard Events
+
+### Handling Keyboard Input
+
+```rust
+fn app() -> Element {
+    let mut text = use_signal(String::new);
+    
+    rsx! {
+        div {
+            tabindex: 0,  // Required to receive keyboard events
+            onkeydown: move |event| {
+                println!("Key pressed: {:?}", event.key());
+            },
+            onkeyup: move |event| {
+                println!("Key released: {:?}", event.key());
+            },
+            "Press any key"
+        }
+    }
+}
+```
+
+### Keyboard Event Data
+
+```rust
+rsx! {
+    div {
+        tabindex: 0,
+        onkeydown: move |event| {
+            // Get the key
+            let key = event.key();
+            
+            // Get the physical key code
+            let code = event.code();
+            
+            // Check modifiers
+            if event.modifiers().ctrl() {
+                println!("Ctrl + {:?}", key);
+            }
+            
+            // Check for specific keys
+            match key {
+                Key::Enter => println!("Enter pressed"),
+                Key::Escape => println!("Escape pressed"),
+                _ => {}
+            }
+        },
+    }
+}
+```
+
+## Form Events
+
+### Input Events
+
+```rust
+fn app() -> Element {
+    let mut value = use_signal(String::new);
+    
+    rsx! {
+        input {
+            r#type: "text",
+            value: "{value}",
+            oninput: move |event| {
+                value.set(event.value());
+            }
+        }
+        p { "You typed: {value}" }
+    }
+}
+```
+
+### Typed Input Values
+
+Use `parsed()` to get typed values:
+
+```rust
+fn app() -> Element {
+    let mut count = use_signal(|| 0);
+    
+    rsx! {
+        input {
+            r#type: "number",
+            value: "{count}",
+            oninput: move |event| {
+                if let Ok(value) = event.parsed::<i32>() {
+                    count.set(value);
+                }
+            }
+        }
+    }
+}
+```
+
+### Form Submission
+
+```rust
+fn app() -> Element {
+    let mut name = use_signal(String::new);
+    let mut email = use_signal(String::new);
+    
+    rsx! {
+        form {
+            onsubmit: move |event| {
+                event.prevent_default();
+                println!("Submitted: {} - {}", name(), email());
+            },
+            
+            input {
+                r#type: "text",
+                placeholder: "Name",
+                value: "{name}",
+                oninput: move |e| name.set(e.value()),
+            }
+            
+            input {
+                r#type: "email",
+                placeholder: "Email",
+                value: "{email}",
+                oninput: move |e| email.set(e.value()),
+            }
+            
+            button { r#type: "submit", "Submit" }
+        }
+    }
+}
+```
+
+## Event Propagation
+
+### Stopping Propagation
+
+Prevent events from bubbling up to parent elements:
+
+```rust
+rsx! {
+    div {
+        onclick: move |_| println!("Outer div clicked"),
+        
+        button {
+            onclick: move |event| {
+                event.stop_propagation();
+                println!("Button clicked - won't bubble to div");
+            },
+            "Don't propagate"
+        }
+        
+        button {
+            onclick: move |_| {
+                println!("Button clicked - will bubble to div");
+            },
+            "Propagate"
+        }
+    }
+}
+```
+
+### Preventing Default Behavior
+
+Prevent the browser's default action:
+
+```rust
+rsx! {
+    a {
+        href: "https://example.com",
+        onclick: move |event| {
+            event.prevent_default();
+            println!("Link clicked but navigation prevented");
+        },
+        "Click me"
+    }
+}
+```
+
+## Other Common Events
+
+### Focus Events
+
+```rust
+rsx! {
+    input {
+        onfocusin: move |_| println!("Input focused"),
+        onfocusout: move |_| println!("Input lost focus"),
+    }
+}
+```
+
+### Scroll Events
+
+```rust
+fn app() -> Element {
+    let mut scroll_pos = use_signal(|| 0.0);
+    
+    rsx! {
+        div {
+            style: "height: 400px; overflow: auto;",
+            onscroll: move |event| {
+                scroll_pos.set(event.data().scroll_top());
+            },
+            
+            // Long content...
+            p { "Scroll position: {scroll_pos}" }
+        }
+    }
+}
+```
+
+### Media Events
+
+```rust
+rsx! {
+    video {
+        src: "/video.mp4",
+        onplay: move |_| println!("Video playing"),
+        onpause: move |_| println!("Video paused"),
+        onended: move |_| println!("Video ended"),
+    }
+}
+```
+
+## Event Handler Patterns
+
+### Sharing Event Handlers
+
+```rust
+fn app() -> Element {
+    let mut count = use_signal(|| 0);
+    
+    let increment = move |_| count += 1;
+    
+    rsx! {
+        button { onclick: increment, "Increment" }
+        button { onclick: increment, "Also Increment" }
+        p { "Count: {count}" }
+    }
+}
+```
+
+### Event Handlers with Parameters
+
+```rust
+fn app() -> Element {
+    let mut selected = use_signal(|| String::new());
+    
+    let select_item = move |item: String| {
+        move |_| selected.set(item.clone())
+    };
+    
+    rsx! {
+        button { onclick: select_item("Apple".to_string()), "Apple" }
+        button { onclick: select_item("Banana".to_string()), "Banana" }
+        p { "Selected: {selected}" }
+    }
+}
+```
+
+### Async Event Handlers
+
+Event handlers can be async:
+
+```rust
+fn app() -> Element {
+    let mut data = use_signal(String::new);
+    
+    rsx! {
+        button {
+            onclick: move |_| async move {
+                // Simulate API call
+                let response = fetch_data().await;
+                data.set(response);
+            },
+            "Load Data"
+        }
+        p { "{data}" }
+    }
+}
+```
+
+## Complete Event List
+
+### Mouse Events
+- `onclick` - Element clicked
+- `ondoubleclick` - Element double-clicked
+- `oncontextmenu` - Right-click menu
+- `onmousedown` - Mouse button pressed
+- `onmouseup` - Mouse button released
+- `onmousemove` - Mouse moved over element
+- `onmouseenter` - Mouse enters element
+- `onmouseleave` - Mouse leaves element
+- `onmouseover` - Mouse over element (bubbles)
+- `onmouseout` - Mouse out of element (bubbles)
+
+### Keyboard Events
+- `onkeydown` - Key pressed
+- `onkeyup` - Key released
+- `onkeypress` - Key pressed (deprecated, use onkeydown)
+
+### Form Events
+- `oninput` - Input value changed
+- `onchange` - Input change committed
+- `onsubmit` - Form submitted
+- `onfocus` - Element focused
+- `onblur` - Element lost focus
+
+### Other Events
+- `onscroll` - Element scrolled
+- `onwheel` - Mouse wheel scrolled
+- `ondrag` - Element being dragged
+- `ondrop` - Element dropped
+- `onresize` - Element resized
+
+## Best Practices
+
+1. **Use `move` closures**: Event handlers need to own their captured data
+2. **Prevent default when needed**: Use `event.prevent_default()` for forms and links
+3. **Stop propagation carefully**: Only stop propagation when necessary
+4. **Keep handlers simple**: Extract complex logic into separate functions
+5. **Handle errors**: Gracefully handle errors in async handlers
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="State Management" icon="database" href="../state/signals">
+    Learn more about managing state with signals
+  </Card>
+  <Card title="Conditional Rendering" icon="code-branch" href="./conditional-rendering">
+    Control what gets rendered
+  </Card>
+</CardGroup>

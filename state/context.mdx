@@ -1,0 +1,404 @@
+---
+title: Context API
+description: Share state across component trees without prop drilling
+---
+
+Context allows you to share values down the component tree without passing props through every level. It's ideal for sharing theme data, user authentication, or application-wide state.
+
+## Basic Usage
+
+```rust
+use dioxus::prelude::*;
+
+#[derive(Clone, Copy, PartialEq)]
+enum Theme {
+    Light,
+    Dark,
+}
+
+fn App() -> Element {
+    // Provide context at the root
+    use_context_provider(|| Signal::new(Theme::Light));
+    
+    rsx! {
+        ThemeToggle {}
+        ThemedContent {}
+    }
+}
+
+#[component]
+fn ThemeToggle() -> Element {
+    // Consume context anywhere in the tree
+    let mut theme = use_context::<Signal<Theme>>();
+    
+    rsx! {
+        button {
+            onclick: move |_| {
+                theme.set(match theme() {
+                    Theme::Light => Theme::Dark,
+                    Theme::Dark => Theme::Light,
+                });
+            },
+            "Toggle theme"
+        }
+    }
+}
+
+#[component] 
+fn ThemedContent() -> Element {
+    let theme = use_context::<Signal<Theme>>();
+    
+    rsx! {
+        div {
+            class: match theme() {
+                Theme::Light => "light",
+                Theme::Dark => "dark",
+            },
+            "Themed content"
+        }
+    }
+}
+```
+
+## Function Signatures
+
+### Providing Context
+
+```rust
+fn use_context_provider<T: Clone + 'static>(f: impl FnOnce() -> T) -> T
+```
+
+Provides a value to all child components. The value is created once and is immutable after creation (use interior mutability like `Signal` for mutable state).
+
+### Consuming Context
+
+```rust
+fn use_context<T: Clone + 'static>() -> T
+```
+
+Consumes context provided by a parent component. Panics if the context is not found.
+
+```rust
+fn try_use_context<T: Clone + 'static>() -> Option<T>
+```
+
+Tries to consume context, returning `None` if not found.
+
+## Context with Signals
+
+The most common pattern is providing signals as context:
+
+```rust
+#[derive(Clone, Copy)]
+struct AppState {
+    count: i32,
+    name: String,
+}
+
+fn App() -> Element {
+    // Provide a signal as context for reactive updates
+    use_context_provider(|| Signal::new(AppState {
+        count: 0,
+        name: "App".to_string(),
+    }));
+    
+    rsx! {
+        Counter {}
+        Display {}
+    }
+}
+
+#[component]
+fn Counter() -> Element {
+    let mut state = use_context::<Signal<AppState>>();
+    
+    rsx! {
+        button {
+            onclick: move |_| state.write().count += 1,
+            "Increment"
+        }
+    }
+}
+
+#[component]
+fn Display() -> Element {
+    let state = use_context::<Signal<AppState>>();
+    
+    rsx! {
+        "Count: {state.read().count}"
+    }
+}
+```
+
+## Multiple Contexts
+
+You can provide multiple contexts in a component:
+
+```rust
+#[derive(Clone)]
+struct User {
+    name: String,
+}
+
+#[derive(Clone, Copy)]
+enum Theme {
+    Light,
+    Dark,
+}
+
+fn App() -> Element {
+    use_context_provider(|| Signal::new(Theme::Light));
+    use_context_provider(|| Signal::new(User {
+        name: "Alice".to_string(),
+    }));
+    
+    rsx! {
+        Child {}
+    }
+}
+
+#[component]
+fn Child() -> Element {
+    let theme = use_context::<Signal<Theme>>();
+    let user = use_context::<Signal<User>>();
+    
+    rsx! {
+        "Hello, {user.read().name}!"
+        "Theme: {theme:?}"
+    }
+}
+```
+
+## Context Propagation
+
+Context propagates down the component tree:
+
+```rust
+fn Root() -> Element {
+    use_context_provider(|| Signal::new("root context"));
+    
+    rsx! { Level1 {} }
+}
+
+#[component]
+fn Level1() -> Element {
+    // Can access context from Root
+    let ctx = use_context::<Signal<&'static str>>();
+    
+    rsx! { Level2 {} }
+}
+
+#[component]
+fn Level2() -> Element {
+    // Can also access context from Root
+    let ctx = use_context::<Signal<&'static str>>();
+    
+    rsx! { "{ctx}" }
+}
+```
+
+## Overriding Context
+
+Child components can override parent context:
+
+```rust
+fn App() -> Element {
+    use_context_provider(|| Signal::new("parent"));
+    
+    rsx! {
+        Child1 {}
+        Section {}
+    }
+}
+
+#[component]
+fn Section() -> Element {
+    // Override parent context for this subtree
+    use_context_provider(|| Signal::new("section"));
+    
+    rsx! {
+        Child2 {}
+    }
+}
+
+#[component]
+fn Child1() -> Element {
+    let ctx = use_context::<Signal<&'static str>>();
+    rsx! { "{ctx}" }  // "parent"
+}
+
+#[component]
+fn Child2() -> Element {
+    let ctx = use_context::<Signal<&'static str>>();
+    rsx! { "{ctx}" }  // "section"
+}
+```
+
+## Error Handling
+
+### Graceful Fallback
+
+```rust
+#[component]
+fn OptionalTheme() -> Element {
+    let theme = try_use_context::<Signal<Theme>>();
+    
+    let theme_class = theme
+        .map(|t| match t() {
+            Theme::Light => "light",
+            Theme::Dark => "dark",
+        })
+        .unwrap_or("default");
+    
+    rsx! {
+        div { class: "{theme_class}", "Content" }
+    }
+}
+```
+
+### Custom Error Messages
+
+```rust
+fn use_theme() -> Signal<Theme> {
+    try_use_context::<Signal<Theme>>()
+        .expect("Theme context not found. Make sure App wraps this component.")
+}
+
+#[component]
+fn ThemedButton() -> Element {
+    let theme = use_theme();  // Better error message if context missing
+    
+    rsx! { button { "Themed button" } }
+}
+```
+
+## Common Patterns
+
+### Authentication Context
+
+```rust
+#[derive(Clone)]
+struct AuthContext {
+    user: Option<User>,
+    token: Option<String>,
+}
+
+fn App() -> Element {
+    use_context_provider(|| Signal::new(AuthContext {
+        user: None,
+        token: None,
+    }));
+    
+    rsx! {
+        LoginForm {}
+        ProtectedContent {}
+    }
+}
+
+#[component]
+fn LoginForm() -> Element {
+    let mut auth = use_context::<Signal<AuthContext>>();
+    
+    let login = move |_| {
+        auth.write().user = Some(User { name: "Alice".to_string() });
+        auth.write().token = Some("abc123".to_string());
+    };
+    
+    rsx! {
+        button { onclick: login, "Login" }
+    }
+}
+
+#[component]
+fn ProtectedContent() -> Element {
+    let auth = use_context::<Signal<AuthContext>>();
+    
+    match auth.read().user {
+        Some(ref user) => rsx! { "Welcome, {user.name}!" },
+        None => rsx! { "Please login" },
+    }
+}
+```
+
+### Router Context
+
+```rust
+#[derive(Clone)]
+struct RouterContext {
+    current_route: String,
+}
+
+fn App() -> Element {
+    use_context_provider(|| Signal::new(RouterContext {
+        current_route: "/".to_string(),
+    }));
+    
+    rsx! {
+        NavBar {}
+        PageContent {}
+    }
+}
+```
+
+### Settings Context
+
+```rust
+#[derive(Clone)]
+struct Settings {
+    language: String,
+    notifications_enabled: bool,
+    theme: Theme,
+}
+
+fn App() -> Element {
+    use_context_provider(|| Signal::new(Settings {
+        language: "en".to_string(),
+        notifications_enabled: true,
+        theme: Theme::Light,
+    }));
+    
+    rsx! {
+        SettingsPanel {}
+        MainContent {}
+    }
+}
+```
+
+## Context vs Props
+
+### Use Props When:
+
+- Data flows through 1-2 component levels
+- Relationship between parent and child is explicit
+- Component needs to be reusable with different values
+
+### Use Context When:
+
+- Data needs to be accessed by many components
+- Intermediate components don't use the data (prop drilling)
+- Sharing truly global or semi-global state (theme, auth, etc.)
+
+## Performance
+
+- Context lookups are fast (hash map lookup)
+- Use `Signal` in context for reactive updates
+- Context is resolved once per component, not on every render
+- Child components only rerender if they read a signal that changed
+
+## TypeScript Equivalent
+
+Dioxus context is similar to React Context:
+
+```typescript
+// React
+const ThemeContext = React.createContext("light");
+
+// Dioxus (Rust)
+use_context_provider(|| Signal::new("light"));
+```
+
+## Related
+
+- [use_signal](/state/use-signal) - Create reactive values for context
+- [global-state](/state/global-state) - Application-wide state without context
+- [stores](/state/stores) - Fine-grained nested state management

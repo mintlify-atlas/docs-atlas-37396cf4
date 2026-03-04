@@ -1,0 +1,478 @@
+---
+title: CLI Commands
+description: Complete reference for all Dioxus CLI commands and their options
+---
+
+The Dioxus CLI provides a comprehensive set of commands for every stage of development, from project creation to production deployment.
+
+## Project Creation
+
+### `dx new`
+
+Create a new Dioxus project from a template.
+
+```bash
+dx new <PATH> [OPTIONS]
+```
+
+**Arguments:**
+- `<PATH>` - Directory where the project will be created
+
+**Options:**
+- `--name <NAME>` - Project name (defaults to directory name)
+- `--template <TEMPLATE>` - Template path (default: `gh:dioxuslabs/dioxus-template`)
+- `--branch <BRANCH>` - Git branch to use
+- `--revision <REV>` - Git commit hash
+- `--tag <TAG>` - Git tag
+- `--subtemplate <PATH>` - Subfolder within template repository
+- `--option <KEY=VALUE>` - Template-specific options
+- `--yes` - Skip prompts, use defaults
+- `--vcs <VCS>` - Version control system: `git`, `none`
+
+**Examples:**
+
+```bash
+# Create from default template
+dx new my-app
+
+# Create with custom name
+dx new my-app --name "My Application"
+
+# Use specific template
+dx new my-app --template gh:username/my-template
+
+# Use template branch
+dx new my-app --template gh:dioxuslabs/dioxus-template --branch experimental
+
+# Skip interactive prompts
+dx new my-app --yes
+```
+
+### `dx init`
+
+Initialize Dioxus in an existing project directory.
+
+```bash
+dx init [OPTIONS]
+```
+
+This command attempts to preserve your existing project structure while adding Dioxus configuration.
+
+## Development
+
+### `dx serve`
+
+Build, watch, and serve the project with hot-reload.
+
+```bash
+dx serve [OPTIONS]
+```
+
+**Options:**
+
+**Server Configuration:**
+- `--address <ADDR>` - Server address (default: `127.0.0.1`)
+- `--port <PORT>` - Server port (default: `8080`)
+- `--open [BOOL]` - Open in browser (default: `true`)
+- `--cross-origin-policy` - Set CORS to same-origin
+
+**Hot-Reload:**
+- `--hot-reload [BOOL]` - Enable hot-reload (default: `true`)
+- `--hot-patch` - Enable Rust code hot-patching (experimental)
+- `--watch [BOOL]` - Watch filesystem for changes (default: `true`)
+- `--wsl-file-poll-interval <SECS>` - File polling interval for WSL (default: `2`)
+
+**Development UI:**
+- `--interactive [BOOL]` - Interactive TUI mode (default: `true`)
+- `--always-on-top [BOOL]` - Keep desktop window on top
+
+**Build Arguments:**
+- `--platform <PLATFORM>` - Target platform: `web`, `desktop`, `ios`, `android`
+- `--features <FEATURES>` - Cargo features to enable
+- `--package <PACKAGE>` - Workspace package to build
+- `--example <EXAMPLE>` - Run an example
+- `--bin <BIN>` - Binary target to build
+- `--release` - Build in release mode
+- `--target <TARGET>` - Rust target triple
+
+**Examples:**
+
+```bash
+# Basic development server
+dx serve
+
+# Serve on custom port
+dx serve --port 3000
+
+# Desktop app with hot-patching
+dx serve --platform desktop --hot-patch
+
+# Release build without hot-reload
+dx serve --release --hot-reload false
+
+# Fullstack app (client + server)
+dx serve --fullstack
+
+# Workspace package
+dx serve --package my-frontend
+
+# Run example
+dx serve --example counter
+```
+
+**Keyboard Shortcuts (Interactive Mode):**
+
+- **`r`** - Trigger manual rebuild
+- **`p`** - Toggle automatic rebuilds on file change
+- **`v`** - Toggle verbose logging
+- **`/`** - Show all commands
+- **`Ctrl+C`** - Exit server
+
+### `dx run`
+
+Run the project without interactive mode or hot-reload.
+
+```bash
+dx run [OPTIONS]
+```
+
+This is ideal for CI/CD pipelines and scripting. Accepts the same options as `dx serve` but defaults to:
+- `--interactive false`
+- `--hot-reload false`
+- `--watch false`
+
+Errors cascade as exit codes rather than being handled by the TUI.
+
+## Building
+
+### `dx build`
+
+Build the Dioxus app and all assets for production.
+
+```bash
+dx build [OPTIONS]
+```
+
+**Options:**
+- `--release` - Build with optimizations (default for production)
+- `--platform <PLATFORM>` - Target platform
+- `--features <FEATURES>` - Cargo features
+- `--package <PACKAGE>` - Workspace package
+- `--target <TARGET>` - Rust target triple
+- `--fullstack [BOOL]` - Build client and server
+- `--ssg` - Pre-render all static routes
+- `--fat-binary` - Include symbols for hot-patching
+- `--force-sequential [BOOL]` - Build server before client (default in CI)
+
+**Examples:**
+
+```bash
+# Production web build
+dx build --platform web --release
+
+# Desktop release
+dx build --platform desktop --release
+
+# Fullstack with static site generation
+dx build --fullstack --ssg
+
+# iOS build
+dx build --platform ios --release
+
+# Custom features
+dx build --features "analytics,premium"
+```
+
+Output location is determined by `Dioxus.toml` (`out_dir` field, default: `dist/`).
+
+### `dx bundle`
+
+Bundle the app into a platform-specific distributable package.
+
+```bash
+dx bundle [OPTIONS]
+```
+
+**Options:**
+- `--package-types <TYPES>` - Bundle formats (e.g., `dmg`, `msi`, `appimage`, `deb`)
+- `--out-dir <DIR>` - Output directory for bundles
+- All `dx build` options are also supported
+
+**Supported Package Types:**
+
+**macOS:**
+- `app` - macOS app bundle
+- `dmg` - Disk image
+
+**Windows:**
+- `msi` - Windows Installer
+- `exe` - Executable installer
+
+**Linux:**
+- `deb` - Debian package
+- `rpm` - Red Hat package
+- `appimage` - AppImage
+
+**Mobile:**
+- `ios-bundle` - iOS app bundle (requires codesigning)
+- `aab` - Android App Bundle
+- `apk` - Android APK
+
+**Examples:**
+
+```bash
+# macOS DMG
+dx bundle --platform macos --package-types dmg
+
+# Windows installer
+dx bundle --platform windows --package-types msi
+
+# Linux packages
+dx bundle --platform linux --package-types deb,appimage
+
+# Android release
+dx bundle --platform android --release
+
+# Custom output directory
+dx bundle --out-dir ./releases
+```
+
+<Warning>
+iOS bundles are not automatically codesigned. You must sign them before distribution.
+</Warning>
+
+## Code Quality
+
+### `dx check`
+
+Check the project for errors without building.
+
+```bash
+dx check [OPTIONS]
+```
+
+**Options:**
+- `--file <PATH>` - Check specific file
+- `--package <PACKAGE>` - Workspace package
+- Platform and build options
+
+**Examples:**
+
+```bash
+# Check entire project
+dx check
+
+# Check specific file
+dx check --file src/components/header.rs
+
+# Check with features
+dx check --features "ssr,router"
+```
+
+### `dx fmt`
+
+Automatically format RSX macros.
+
+```bash
+dx fmt [OPTIONS]
+```
+
+**Options:**
+- `--check` - Check formatting without modifying files (exits 1 if changes needed)
+- `--file <PATH>` - Format specific file (use `-` for stdin/stdout)
+- `--raw <CODE>` - Format raw RSX code
+- `--split-line-attributes` - Put each attribute on separate line
+- `--all-code` - Format Rust code before RSX (runs `rustfmt` first)
+- `--package <PACKAGE>` - Workspace package
+
+**Examples:**
+
+```bash
+# Format entire project
+dx fmt
+
+# Check formatting (CI)
+dx fmt --check
+
+# Format specific file
+dx fmt --file src/app.rs
+
+# Format from stdin (for editor integration)
+echo 'rsx! { div { "hello" } }' | dx fmt --file -
+
+# Format with rustfmt first
+dx fmt --all-code
+```
+
+## Configuration
+
+### `dx config`
+
+Manage Dioxus configuration.
+
+```bash
+dx config <SUBCOMMAND>
+```
+
+**Subcommands:**
+- `dx config init <NAME>` - Create `Dioxus.toml` with all fields
+- `dx config show` - Display current configuration
+
+## Diagnostics
+
+### `dx doctor`
+
+Diagnose system setup and verify tooling installation.
+
+```bash
+dx doctor
+```
+
+Checks:
+- Rust toolchain version and sysroot
+- `wasm-opt` installation and location
+- `wasm-bindgen` version and binary
+- Tailwind CSS installation
+- Editor extensions (VS Code, Cursor)
+- Platform-specific SDKs (Xcode, Android SDK)
+
+**Example Output:**
+
+```
+✓ Rust: 1.80.0 (/Users/me/.rustup/toolchains/stable)
+✓ wasm-opt: /Users/me/.cargo/bin/wasm-opt
+✓ wasm-bindgen: 0.2.92 (automatically managed)
+✓ Tailwind CSS: v3.4.15
+✓ VS Code Extension: installed
+✓ Xcode: 15.2
+```
+
+### `dx print`
+
+Print build information in structured format for third-party tools.
+
+```bash
+dx print <SUBCOMMAND>
+```
+
+**Subcommands:**
+- `dx print cargo-args` - Cargo compilation arguments
+- `dx print linker-args` - Linker flags used by DX
+
+## Utilities
+
+### `dx translate`
+
+Translate HTML into Dioxus RSX.
+
+```bash
+dx translate [OPTIONS]
+```
+
+Converts HTML snippets or files into valid RSX syntax.
+
+### `dx components`
+
+Manage components from the `dioxus-component` registry.
+
+```bash
+dx components <SUBCOMMAND>
+```
+
+Registry integration for sharing and installing reusable components.
+
+### `dx self-update`
+
+Update the Dioxus CLI to the latest version.
+
+```bash
+dx self-update
+```
+
+## Advanced Commands
+
+### `dx tools`
+
+Run internal build tools.
+
+```bash
+dx tools <SUBCOMMAND>
+```
+
+**Subcommands:**
+- `dx tools assets` - Build assets for specific target
+- `dx tools hotpatch` - Hot-patch a fat binary
+
+These are primarily used internally by the CLI but can be useful for custom build pipelines.
+
+## Common Patterns
+
+### Development Workflow
+
+```bash
+# Create project
+dx new my-app && cd my-app
+
+# Start development
+dx serve
+
+# Make changes, hot-reload applies automatically
+# Press 'r' to force rebuild if needed
+
+# Format code
+dx fmt
+
+# Check for errors
+dx check
+```
+
+### Production Build Workflow
+
+```bash
+# Run checks
+dx check
+dx fmt --check
+
+# Build for production
+dx build --platform web --release
+
+# Bundle for distribution
+dx bundle --platform desktop --release
+```
+
+### Fullstack Development
+
+```bash
+# Serve with automatic server/client detection
+dx serve --fullstack
+
+# Build both client and server
+dx build --fullstack --release
+
+# Pre-render static routes
+dx build --fullstack --ssg --release
+```
+
+## Exit Codes
+
+Commands return standard exit codes:
+- `0` - Success
+- `1` - Error occurred
+
+Use `dx run` or `dx build` in CI/CD pipelines for proper error propagation.
+
+## Environment Variables
+
+- `CI` - When set, forces sequential builds in fullstack mode
+- `RUST_LOG` - Control logging verbosity (e.g., `RUST_LOG=debug dx serve`)
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Configuration" icon="gear" href="/cli/configuration">
+    Configure Dioxus.toml options
+  </Card>
+  <Card title="Hot-Reload" icon="bolt" href="/cli/hot-reload">
+    Understanding hot-reload systems
+  </Card>
+</CardGroup>

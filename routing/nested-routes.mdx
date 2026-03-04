@@ -1,0 +1,477 @@
+---
+title: Nested Routes
+description: Build complex layouts with nested routing and the Outlet component
+---
+
+Nested routes allow you to create layouts that wrap multiple pages, building complex UI hierarchies with shared components.
+
+## Layouts
+
+A layout is a component that wraps other routes. It renders the `Outlet` component, which is replaced by the current child route.
+
+### Basic Layout
+
+```rust
+use dioxus::prelude::*;
+
+#[derive(Routable, Clone, PartialEq)]
+#[rustfmt::skip]
+enum Route {
+    #[layout(NavBar)]       // Wrap routes in NavBar layout
+        #[route("/")]
+        Home {},
+        #[route("/about")]
+        About {},
+    #[end_layout]
+}
+
+#[component]
+fn NavBar() -> Element {
+    rsx! {
+        nav {
+            Link { to: Route::Home {}, "Home" }
+            Link { to: Route::About {}, "About" }
+        }
+        // Child routes render here
+        Outlet::<Route> {}
+    }
+}
+
+#[component]
+fn Home() -> Element {
+    rsx! { h1 { "Home Page" } }
+}
+
+#[component]
+fn About() -> Element {
+    rsx! { h1 { "About Page" } }
+}
+```
+
+When you navigate to `/`, the router renders:
+- `NavBar` component with navigation
+- `Home` component where `Outlet` is placed
+
+### The Outlet Component
+
+The `Outlet` component is a placeholder that renders the current child route:
+
+```rust
+#[component]
+fn Layout() -> Element {
+    rsx! {
+        header { "App Header" }
+        main {
+            Outlet::<Route> {}  // Child routes render here
+        }
+        footer { "App Footer" }
+    }
+}
+```
+
+<Warning>
+  Every layout component must include exactly one `Outlet` component, or child routes won't render.
+</Warning>
+
+## Nesting Routes
+
+Use `#[nest()]` to create URL hierarchies:
+
+```rust
+#[derive(Routable, Clone, PartialEq)]
+#[rustfmt::skip]
+enum Route {
+    #[nest("/blog")]        // All nested routes start with /blog
+        #[route("/")]       // Matches /blog/
+        BlogList {},
+        #[route("/:id")]    // Matches /blog/:id
+        BlogPost { id: String },
+    #[end_nest]
+}
+```
+
+This creates these URLs:
+- `/blog/` → `BlogList`
+- `/blog/hello` → `BlogPost { id: "hello" }`
+
+### Nest with Layout
+
+Combine nesting and layouts:
+
+```rust
+#[derive(Routable, Clone, PartialEq)]
+#[rustfmt::skip]
+enum Route {
+    #[nest("/blog")]
+    #[layout(BlogLayout)]   // Layout for all blog routes
+        #[route("/")]
+        BlogList {},
+        #[route("/:id")]
+        BlogPost { id: String },
+    #[end_layout]
+    #[end_nest]
+}
+
+#[component]
+fn BlogLayout() -> Element {
+    rsx! {
+        header { h1 { "My Blog" } }
+        nav {
+            Link { to: Route::BlogList {}, "All Posts" }
+        }
+        main { Outlet::<Route> {} }
+        footer { "© 2024" }
+    }
+}
+```
+
+Both `BlogList` and `BlogPost` will render inside the `BlogLayout` component.
+
+## Multiple Nested Levels
+
+Create deeply nested route structures:
+
+```rust
+#[derive(Routable, Clone, PartialEq)]
+#[rustfmt::skip]
+enum Route {
+    // Root layout
+    #[layout(RootLayout)]
+        #[route("/")]
+        Home {},
+        
+        // Nested section with its own layout
+        #[nest("/admin")]
+        #[layout(AdminLayout)]
+            #[route("/")]
+            AdminDashboard {},
+            
+            // Further nested routes
+            #[nest("/users")]
+                #[route("/")]
+                UserList {},
+                #[route("/:id")]
+                UserDetail { id: usize },
+            #[end_nest]
+        #[end_layout]
+        #[end_nest]
+    #[end_layout]
+}
+```
+
+This creates URLs:
+- `/` → `RootLayout` → `Home`
+- `/admin/` → `RootLayout` → `AdminLayout` → `AdminDashboard`
+- `/admin/users/` → `RootLayout` → `AdminLayout` → `UserList`
+- `/admin/users/123` → `RootLayout` → `AdminLayout` → `UserDetail`
+
+### Nested Layout Example
+
+```rust
+#[component]
+fn RootLayout() -> Element {
+    rsx! {
+        header { "Site Header" }
+        Outlet::<Route> {}  // AdminLayout or Home renders here
+        footer { "Site Footer" }
+    }
+}
+
+#[component]
+fn AdminLayout() -> Element {
+    rsx! {
+        div { class: "admin-container",
+            aside {
+                Link { to: Route::AdminDashboard {}, "Dashboard" }
+                Link { to: Route::UserList {}, "Users" }
+            }
+            main { Outlet::<Route> {} }  // Admin pages render here
+        }
+    }
+}
+```
+
+## Outlet Context
+
+Share data between layouts and child routes using outlet context:
+
+```rust
+#[component]
+fn BlogLayout() -> Element {
+    // Provide context to child routes
+    use_context_provider(|| Signal::new(BlogContext {
+        author: "John Doe".to_string(),
+    }));
+    
+    rsx! {
+        header { "Blog" }
+        Outlet::<Route> {}
+    }
+}
+
+#[component]
+fn BlogPost(id: String) -> Element {
+    // Access context from parent layout
+    let context = use_context::<Signal<BlogContext>>();
+    
+    rsx! {
+        h1 { "Post {id}" }
+        p { "By {context.read().author}" }
+    }
+}
+```
+
+## Layout Patterns
+
+### App Shell Pattern
+
+A common layout with header, sidebar, and main content:
+
+```rust
+#[derive(Routable, Clone, PartialEq)]
+#[rustfmt::skip]
+enum Route {
+    #[layout(AppShell)]
+        #[route("/")]
+        Dashboard {},
+        #[route("/profile")]
+        Profile {},
+        #[route("/settings")]
+        Settings {},
+    #[end_layout]
+}
+
+#[component]
+fn AppShell() -> Element {
+    rsx! {
+        div { class: "app-shell",
+            header { class: "header",
+                h1 { "My App" }
+            }
+            div { class: "container",
+                aside { class: "sidebar",
+                    nav {
+                        Link { to: Route::Dashboard {}, "Dashboard" }
+                        Link { to: Route::Profile {}, "Profile" }
+                        Link { to: Route::Settings {}, "Settings" }
+                    }
+                }
+                main { class: "main-content",
+                    Outlet::<Route> {}
+                }
+            }
+        }
+    }
+}
+```
+
+### Marketing Site Pattern
+
+Different layouts for marketing and app sections:
+
+```rust
+#[derive(Routable, Clone, PartialEq)]
+#[rustfmt::skip]
+enum Route {
+    // Marketing pages with minimal layout
+    #[layout(MarketingLayout)]
+        #[route("/")]
+        Landing {},
+        #[route("/pricing")]
+        Pricing {},
+    #[end_layout]
+    
+    // App pages with full navigation
+    #[nest("/app")]
+    #[layout(AppLayout)]
+        #[route("/")]
+        Dashboard {},
+        #[route("/projects")]
+        Projects {},
+    #[end_layout]
+    #[end_nest]
+}
+
+#[component]
+fn MarketingLayout() -> Element {
+    rsx! {
+        header { class: "marketing-header",
+            Link { to: Route::Landing {}, "Home" }
+            Link { to: Route::Pricing {}, "Pricing" }
+            Link { to: Route::Dashboard {}, "Login" }
+        }
+        Outlet::<Route> {}
+    }
+}
+
+#[component]
+fn AppLayout() -> Element {
+    rsx! {
+        div { class: "app",
+            nav { class: "app-nav",
+                Link { to: Route::Dashboard {}, "Dashboard" }
+                Link { to: Route::Projects {}, "Projects" }
+            }
+            Outlet::<Route> {}
+        }
+    }
+}
+```
+
+### Tabbed Interface
+
+Use nested routes for tabs:
+
+```rust
+#[derive(Routable, Clone, PartialEq)]
+#[rustfmt::skip]
+enum Route {
+    #[nest("/settings")]
+    #[layout(SettingsTabs)]
+        #[route("/")]
+        #[redirect("/", || Route::GeneralSettings {})]
+        #[route("/general")]
+        GeneralSettings {},
+        #[route("/privacy")]
+        PrivacySettings {},
+        #[route("/notifications")]
+        NotificationSettings {},
+    #[end_layout]
+    #[end_nest]
+}
+
+#[component]
+fn SettingsTabs() -> Element {
+    rsx! {
+        h1 { "Settings" }
+        nav { class: "tabs",
+            Link {
+                to: Route::GeneralSettings {},
+                active_class: "active",
+                "General"
+            }
+            Link {
+                to: Route::PrivacySettings {},
+                active_class: "active",
+                "Privacy"
+            }
+            Link {
+                to: Route::NotificationSettings {},
+                active_class: "active",
+                "Notifications"
+            }
+        }
+        Outlet::<Route> {}
+    }
+}
+```
+
+## Without Nesting URL
+
+You can use layouts without nesting the URL path:
+
+```rust
+#[derive(Routable, Clone, PartialEq)]
+#[rustfmt::skip]
+enum Route {
+    #[layout(Layout)]
+        #[route("/home")]    // URL is /home, not /layout/home
+        Home {},
+        #[route("/about")]   // URL is /about, not /layout/about
+        About {},
+    #[end_layout]
+}
+```
+
+## Multiple Layouts at Same Level
+
+You can't have multiple active layouts at the same nesting level. Instead, use separate route groups:
+
+```rust
+#[derive(Routable, Clone, PartialEq)]
+#[rustfmt::skip]
+enum Route {
+    // First layout group
+    #[layout(PublicLayout)]
+        #[route("/")]
+        Home {},
+        #[route("/about")]
+        About {},
+    #[end_layout]
+    
+    // Second layout group
+    #[layout(AuthLayout)]
+        #[route("/login")]
+        Login {},
+        #[route("/signup")]
+        Signup {},
+    #[end_layout]
+}
+```
+
+## Best Practices
+
+1. **Use layouts for shared UI** - Headers, navigation, footers
+2. **Keep layouts simple** - Layouts should focus on structure, not business logic
+3. **Use outlet context sparingly** - Prefer explicit props when possible
+4. **Group related routes** - Use nesting to organize routes logically
+5. **Add rustfmt::skip** - Prevents reformatting of route structure
+
+## Common Mistakes
+
+### Forgetting Outlet
+
+```rust
+// ❌ Wrong - no Outlet
+#[component]
+fn Layout() -> Element {
+    rsx! {
+        nav { "Navigation" }
+        // Child routes won't render!
+    }
+}
+
+// ✅ Correct
+#[component]
+fn Layout() -> Element {
+    rsx! {
+        nav { "Navigation" }
+        Outlet::<Route> {}
+    }
+}
+```
+
+### Forgetting End Tags
+
+```rust
+// ❌ Wrong - missing #[end_layout]
+#[derive(Routable, Clone, PartialEq)]
+enum Route {
+    #[layout(Layout)]
+        #[route("/")]
+        Home {},
+    // Missing #[end_layout]!
+}
+
+// ✅ Correct
+#[derive(Routable, Clone, PartialEq)]
+#[rustfmt::skip]
+enum Route {
+    #[layout(Layout)]
+        #[route("/")]
+        Home {},
+    #[end_layout]
+}
+```
+
+### Wrong Nesting Order
+
+```rust
+// ❌ Wrong - layout after nest
+#[nest("/blog")]
+#[layout(BlogLayout)]
+
+// ✅ Correct - nest then layout
+#[nest("/blog")]
+#[layout(BlogLayout)]
+```

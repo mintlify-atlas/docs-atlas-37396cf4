@@ -1,0 +1,469 @@
+---
+title: Signals
+description: Understanding signals - Dioxus's reactive state primitives
+---
+
+Signals are Dioxus's primary reactive state primitive. They provide automatic dependency tracking, efficient updates, and a Copy-friendly API.
+
+## What Are Signals?
+
+A `Signal<T>` is a Copy-able wrapper around a value that automatically tracks reads and writes. When you read a signal in a component, that component subscribes to updates. When you write to a signal, all subscribed components re-render.
+
+```rust
+use dioxus::prelude::*;
+
+let mut count = Signal::new(0);
+
+// Reading subscribes the current component
+let value = count();
+
+// Writing notifies all subscribers
+count += 1;
+```
+
+### Key Features
+
+- **Automatic Dependency Tracking**: Components automatically subscribe when reading
+- **Copy Type**: Signals are Copy even if `T` isn't
+- **Runtime Borrow Checking**: Like `RefCell<T>`, but for reactive UIs
+- **Efficient**: Only subscribed components re-render
+
+## Creating Signals
+
+### In Components
+
+Use `use_signal` hook:
+
+```rust
+#[component]
+fn Counter() -> Element {
+    let mut count = use_signal(|| 0);
+    
+    rsx! {
+        button {
+            onclick: move |_| count += 1,
+            "Count: {count}"
+        }
+    }
+}
+```
+
+See [Signal::new source](~/workspace/source/packages/signals/src/signal.rs:50)
+
+### Global Signals
+
+Create app-wide state:
+
+```rust
+use dioxus::prelude::*;
+
+static COUNTER: GlobalSignal<i32> = Signal::global(|| 0);
+
+fn ComponentA() -> Element {
+    rsx! {
+        button {
+            onclick: move |_| *COUNTER.write() += 1,
+            "Increment"
+        }
+    }
+}
+
+fn ComponentB() -> Element {
+    rsx! {
+        p { "Count: {COUNTER}" }
+    }
+}
+```
+
+See [Signal::global source](~/workspace/source/packages/signals/src/signal.rs:84)
+
+## Reading Signals
+
+### The read() Method
+
+Returns a read guard:
+
+```rust
+let count = use_signal(|| 0);
+
+// Explicit read
+let read = count.read();
+println!("Value: {}", *read);
+// Guard dropped here
+```
+
+### Call Syntax
+
+Clones the value:
+
+```rust
+let count = use_signal(|| 0);
+
+// Clone the value
+let value: i32 = count();
+```
+
+### Direct Display
+
+Signals implement Display:
+
+```rust
+rsx! {
+    // Automatically reads and subscribes
+    p { "Count: {count}" }
+}
+```
+
+### The peek() Method
+
+Read without subscribing:
+
+```rust
+let mut count = use_signal(|| 0);
+
+// Peek doesn't subscribe this component
+let value = count.peek();
+
+// This won't cause the component to re-render
+*count.write() += 1;
+```
+
+<Tip>
+Use `peek()` when you need to read a value without triggering re-renders on updates.
+</Tip>
+
+## Writing Signals
+
+### The write() Method
+
+```rust
+let mut count = use_signal(|| 0);
+
+// Get mutable access
+*count.write() += 1;
+```
+
+### The set() Method
+
+```rust
+count.set(42);
+```
+
+### Operator Overloading
+
+```rust
+let mut count = use_signal(|| 0);
+
+count += 1;    // AddAssign
+count -= 1;    // SubAssign
+count *= 2;    // MulAssign
+count /= 2;    // DivAssign
+```
+
+### The with_mut() Method
+
+Modify with a closure:
+
+```rust
+let mut list = use_signal(|| vec![1, 2, 3]);
+
+list.with_mut(|v| {
+    v.push(4);
+    v.sort();
+});
+```
+
+## Signal Methods
+
+Signals expose common methods through helper traits:
+
+### Vec Methods
+
+```rust
+let mut items = use_signal(|| vec![1, 2, 3]);
+
+// Read methods (don't trigger writes)
+let first = items.first();
+let len = items.len();
+let is_empty = items.is_empty();
+
+// Write methods (trigger updates)
+items.push(4);
+items.pop();
+items.remove(0);
+items.insert(0, 5);
+```
+
+### Iteration
+
+```rust
+let items = use_signal(|| vec![1, 2, 3]);
+
+// Iterate directly over the signal
+for item in items.iter() {
+    println!("Item: {}", item);
+}
+
+// Use in rsx
+rsx! {
+    for item in items.iter() {
+        li { "{item}" }
+    }
+}
+```
+
+### Option Methods
+
+```rust
+let mut maybe = use_signal(|| Some(42));
+
+if let Some(value) = maybe.as_ref() {
+    println!("Value: {}", value);
+}
+
+maybe.replace(Some(100));
+let taken = maybe.take(); // Sets to None
+```
+
+## Borrow Rules
+
+Signals use runtime borrow checking like `RefCell`:
+
+```rust
+let mut signal = use_signal(|| 0);
+
+// ❌ This will panic - holding read across write
+let read = signal.read();
+signal += 1;  // Panic! Can't write while reading
+println!("{}", read);
+
+// ✅ Use blocks to scope borrows
+{
+    let read = signal.read();
+    println!("{}", read);
+}  // read dropped
+signal += 1;  // OK now
+
+// ✅ Or use with()
+signal.with(|value| println!("{}", value));
+signal += 1;  // OK
+```
+
+### Async Considerations
+
+<Warning>
+Don't hold signal guards across await points - it can cause panics.
+</Warning>
+
+```rust
+// ❌ Don't do this
+use_future(move || async move {
+    let value = signal.read();
+    // While awaiting, other code might try to read/write
+    sleep(Duration::from_secs(1)).await;  // Danger!
+    println!("{}", value);
+});
+
+// ✅ Clone the value first
+use_future(move || async move {
+    let value = signal();  // Clone the value
+    sleep(Duration::from_secs(1)).await;
+    println!("{}", value);
+});
+```
+
+## Memo
+
+`Memo<T>` is a computed signal that automatically updates:
+
+```rust
+let mut count = use_signal(|| 0);
+
+// Memo recomputes when count changes
+let doubled = use_memo(move || count() * 2);
+
+rsx! {
+    p { "Count: {count}" }
+    p { "Doubled: {doubled}" }
+    button {
+        onclick: move |_| count += 1,
+        "Increment"
+    }
+}
+```
+
+See [Memo source](~/workspace/source/packages/signals/src/memo.rs:34)
+
+### Global Memos
+
+```rust
+static COUNT: GlobalSignal<i32> = Signal::global(|| 0);
+static DOUBLED: GlobalMemo<i32> = Signal::global_memo(|| COUNT() * 2);
+
+fn App() -> Element {
+    rsx! {
+        p { "Doubled: {DOUBLED}" }
+    }
+}
+```
+
+### Memo vs Signal
+
+| Feature | Signal | Memo |
+|---------|--------|------|
+| Can write | ✅ | ❌ |
+| Auto-updates | ❌ | ✅ |
+| Tracks dependencies | ❌ | ✅ |
+| Use case | Mutable state | Derived values |
+
+## Signal Lifecycle
+
+Signals use generational-box for memory management:
+
+```rust
+#[component]
+fn Parent() -> Element {
+    let signal = use_signal(|| 0);
+    
+    rsx! {
+        Child { signal }
+    }
+}
+// signal is dropped when Parent unmounts
+```
+
+### Scoped Signals
+
+Create signals in specific scopes:
+
+```rust
+// Create in root scope (lives for app lifetime)
+let signal = Signal::new_in_scope(0, ScopeId::ROOT);
+```
+
+<Warning>
+Don't pass signals up the component tree. Create them at the appropriate level or use global signals.
+</Warning>
+
+## Advanced Patterns
+
+### Computed Chains
+
+```rust
+let mut count = use_signal(|| 0);
+let doubled = use_memo(move || count() * 2);
+let quadrupled = use_memo(move || doubled() * 2);
+
+rsx! {
+    p { "Count: {count}" }
+    p { "Doubled: {doubled}" }
+    p { "Quadrupled: {quadrupled}" }
+}
+```
+
+### Conditional Subscriptions
+
+```rust
+let signal = use_signal(|| 0);
+let enabled = use_signal(|| true);
+
+use_effect(move || {
+    if enabled() {
+        // Only subscribes when enabled is true
+        println!("Value: {}", signal());
+    }
+});
+```
+
+### Signal Maps
+
+```rust
+let mut map = use_signal(|| {
+    std::collections::HashMap::<String, i32>::new()
+});
+
+map.with_mut(|m| {
+    m.insert("key".to_string(), 42);
+});
+
+let value = map.with(|m| m.get("key").copied());
+```
+
+## ReadSignal and Signal&lt;T&gt;
+
+Pass signals as props using `ReadSignal`:
+
+```rust
+#[component]
+fn Display(count: ReadSignal<i32>) -> Element {
+    rsx! { p { "Count: {count}" } }
+}
+
+let count = use_signal(|| 0);
+rsx! {
+    Display { count }
+}
+```
+
+`ReadSignal<T>` is a read-only view that accepts:
+- `Signal<T>`
+- `Memo<T>`
+- Any readable reactive value
+
+## Best Practices
+
+<CardGroup cols={2}>
+  <Card title="Use peek() for Logging" icon="eye">
+    When logging or debugging, use `peek()` to avoid creating unnecessary subscriptions.
+  </Card>
+  
+  <Card title="Clone Before Async" icon="clone">
+    Always clone signal values before await points to avoid borrow panics.
+  </Card>
+  
+  <Card title="Prefer Memos for Computation" icon="calculator">
+    Use `use_memo` for expensive computations that depend on other signals.
+  </Card>
+  
+  <Card title="Keep Signals Focused" icon="bullseye">
+    Each signal should represent one piece of state. Avoid large monolithic state objects.
+  </Card>
+</CardGroup>
+
+## Common Pitfalls
+
+### Overlapping Borrows
+
+```rust
+// ❌ Panic - read and write overlap
+let value = signal.read();
+signal += 1;
+println!("{}", value);
+
+// ✅ Scope your reads
+{
+    let value = signal.read();
+    println!("{}", value);
+}
+signal += 1;
+```
+
+### Reading in Init Closures
+
+```rust
+// ❌ Hook in initialization
+let signal = use_signal(|| {
+    let other = use_signal(|| 0);  // Wrong!
+    0
+});
+
+// ✅ Create hooks at top level
+let signal1 = use_signal(|| 0);
+let signal2 = use_signal(|| 0);
+```
+
+## See Also
+
+- [State Management](/concepts/state) - Using signals for state
+- [Hooks](/concepts/hooks) - Built-in hooks including `use_signal`
+- [Reactivity Guide](/guides/reactivity) - Deep dive into reactive updates

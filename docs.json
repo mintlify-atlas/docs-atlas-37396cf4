@@ -1,122 +1,184 @@
 {
   "$schema": "https://mintlify.com/docs.json",
-  "theme": "mint",
-  "name": "Mint Starter Kit",
+  "name": "Dioxus",
+  "theme": "palm",
   "colors": {
-    "primary": "#16A34A",
-    "light": "#07C983",
-    "dark": "#15803D"
+    "primary": "#FF6B35",
+    "light": "#FFB347",
+    "dark": "#E85A2F"
   },
   "favicon": "/favicon.svg",
-  "navigation": {
-    "tabs": [
-      {
-        "tab": "Guides",
-        "groups": [
-          {
-            "group": "Getting started",
-            "pages": [
-              "index",
-              "quickstart",
-              "development"
-            ]
-          },
-          {
-            "group": "Customization",
-            "pages": [
-              "essentials/settings",
-              "essentials/navigation"
-            ]
-          },
-          {
-            "group": "Writing content",
-            "pages": [
-              "essentials/markdown",
-              "essentials/code",
-              "essentials/images",
-              "essentials/reusable-snippets"
-            ]
-          },
-          {
-            "group": "AI tools",
-            "pages": [
-              "ai-tools/cursor",
-              "ai-tools/claude-code",
-              "ai-tools/windsurf"
-            ]
-          }
-        ]
-      },
-      {
-        "tab": "API reference",
-        "groups": [
-          {
-            "group": "API documentation",
-            "pages": [
-              "api-reference/introduction"
-            ]
-          },
-          {
-            "group": "Endpoint examples",
-            "pages": [
-              "api-reference/endpoint/get",
-              "api-reference/endpoint/create",
-              "api-reference/endpoint/delete",
-              "api-reference/endpoint/webhook"
-            ]
-          }
-        ]
-      }
-    ],
-    "global": {
-      "anchors": [
-        {
-          "anchor": "Documentation",
-          "href": "https://mintlify.com/docs",
-          "icon": "book-open-cover"
-        },
-        {
-          "anchor": "Blog",
-          "href": "https://mintlify.com/blog",
-          "icon": "newspaper"
-        }
-      ]
-    }
-  },
   "logo": {
     "light": "/logo/light.svg",
     "dark": "/logo/dark.svg"
   },
   "navbar": {
-    "links": [
-      {
-        "label": "Support",
-        "href": "mailto:hi@mintlify.com"
-      }
-    ],
     "primary": {
-      "type": "button",
-      "label": "Dashboard",
-      "href": "https://dashboard.mintlify.com"
+      "type": "github",
+      "href": "https://github.com/DioxusLabs/dioxus"
     }
-  },
-  "contextual": {
-    "options": [
-     "copy",
-     "view",
-     "chatgpt",
-     "claude",
-     "perplexity",
-     "mcp",
-     "cursor",
-     "vscode"
-   ]
   },
   "footer": {
     "socials": {
-      "x": "https://x.com/mintlify",
-      "github": "https://github.com/mintlify",
-      "linkedin": "https://linkedin.com/company/mintlify"
+      "github": "https://github.com/DioxusLabs/dioxus",
+      "discord": "https://discord.gg/XgGxMSkvUM"
     }
+  },
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "Documentation",
+        "groups": [
+          {
+            "group": "Get Started",
+            "pages": [
+              "introduction",
+              "installation",
+              "quickstart"
+            ]
+          },
+          {
+            "group": "Core Concepts",
+            "pages": [
+              "concepts/components",
+              "concepts/rsx",
+              "concepts/props",
+              "concepts/state",
+              "concepts/hooks",
+              "concepts/signals"
+            ]
+          },
+          {
+            "group": "Building UI",
+            "pages": [
+              "ui/elements",
+              "ui/styling",
+              "ui/events",
+              "ui/conditional-rendering",
+              "ui/lists"
+            ]
+          },
+          {
+            "group": "State Management",
+            "pages": [
+              "state/use-signal",
+              "state/use-effect",
+              "state/context",
+              "state/global-state",
+              "state/stores"
+            ]
+          },
+          {
+            "group": "Routing",
+            "pages": [
+              "routing/overview",
+              "routing/defining-routes",
+              "routing/navigation",
+              "routing/nested-routes",
+              "routing/route-parameters"
+            ]
+          },
+          {
+            "group": "Async & Data",
+            "pages": [
+              "async/futures",
+              "async/use-resource",
+              "async/suspense",
+              "async/error-handling"
+            ]
+          },
+          {
+            "group": "Fullstack",
+            "pages": [
+              "fullstack/overview",
+              "fullstack/server-functions",
+              "fullstack/ssr",
+              "fullstack/hydration",
+              "fullstack/middleware"
+            ]
+          },
+          {
+            "group": "Platforms",
+            "pages": [
+              "platforms/web",
+              "platforms/desktop",
+              "platforms/mobile",
+              "platforms/native",
+              "platforms/liveview"
+            ]
+          },
+          {
+            "group": "CLI",
+            "pages": [
+              "cli/overview",
+              "cli/commands",
+              "cli/configuration",
+              "cli/hot-reload",
+              "cli/bundling"
+            ]
+          },
+          {
+            "group": "Advanced",
+            "pages": [
+              "advanced/custom-renderers",
+              "advanced/devtools",
+              "advanced/assets",
+              "advanced/performance",
+              "advanced/testing"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "API Reference",
+        "groups": [
+          {
+            "group": "Core",
+            "pages": [
+              "api/core/element",
+              "api/core/component",
+              "api/core/scope",
+              "api/core/virtual-dom"
+            ]
+          },
+          {
+            "group": "Hooks",
+            "pages": [
+              "api/hooks/use-signal",
+              "api/hooks/use-effect",
+              "api/hooks/use-memo",
+              "api/hooks/use-resource",
+              "api/hooks/use-context",
+              "api/hooks/use-coroutine"
+            ]
+          },
+          {
+            "group": "Router",
+            "pages": [
+              "api/router/router",
+              "api/router/route",
+              "api/router/link",
+              "api/router/navigator"
+            ]
+          },
+          {
+            "group": "HTML Elements",
+            "pages": [
+              "api/html/elements",
+              "api/html/attributes",
+              "api/html/events"
+            ]
+          },
+          {
+            "group": "Fullstack",
+            "pages": [
+              "api/fullstack/server-fn",
+              "api/fullstack/launch",
+              "api/fullstack/extractors"
+            ]
+          }
+        ]
+      }
+    ]
   }
 }

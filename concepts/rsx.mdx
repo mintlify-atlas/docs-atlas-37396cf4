@@ -1,0 +1,429 @@
+---
+title: RSX Macro
+description: Learn the RSX macro syntax for declaring UI in Dioxus
+---
+
+The `rsx!` macro is Dioxus's JSX-like syntax for declaring user interfaces. It provides a compile-time checked, ergonomic way to build UI trees.
+
+## Basic Syntax
+
+RSX uses a brace-based syntax similar to JSX/HTML:
+
+```rust
+use dioxus::prelude::*;
+
+rsx! {
+    div {
+        h1 { "Hello, World!" }
+        p { "Welcome to Dioxus" }
+    }
+}
+```
+
+## Elements
+
+Create HTML elements by name:
+
+```rust
+rsx! {
+    div {
+        button { "Click me" }
+        input { r#type: "text" }
+        a { href: "https://dioxuslabs.com", "Visit Dioxus" }
+    }
+}
+```
+
+### Web Components
+
+Elements with a hyphen are treated as web components:
+
+```rust
+rsx! {
+    custom-element {
+        "data-value": "123",
+        "Content"
+    }
+}
+```
+
+## Attributes
+
+Attributes are key-value pairs separated by colons:
+
+```rust
+let width = 100;
+
+rsx! {
+    div {
+        class: "container",
+        id: "main",
+        width: "{width}px",
+        style: "color: red;",
+    }
+}
+```
+
+### Raw Attributes
+
+For non-standard attributes, use quoted strings:
+
+```rust
+rsx! {
+    div {
+        "data-custom": "value",
+        "aria-label": "Description",
+    }
+}
+```
+
+### Optional Attributes
+
+Use unterminated if statements for conditional attributes:
+
+```rust
+let is_active = true;
+let should_highlight = false;
+
+rsx! {
+    div {
+        class: if is_active { "active" },
+        class: if should_highlight { "highlight" },
+    }
+}
+```
+
+## Text and Interpolation
+
+### Static Text
+
+```rust
+rsx! {
+    p { "This is static text" }
+}
+```
+
+### String Interpolation
+
+Embed variables using curly braces:
+
+```rust
+let name = "Alice";
+let count = 42;
+
+rsx! {
+    div {
+        "Hello, {name}!"
+        "Count: {count}"
+    }
+}
+```
+
+### Formatted Text
+
+Use `format_args!` for complex formatting:
+
+```rust
+let price = 19.99;
+
+rsx! {
+    p { "Price: ${price:.2}" }
+    p { {format_args!("Total: ${:.2}", price * 1.1)} }
+}
+```
+
+## Components
+
+Render components by name (must start with capital letter or contain `_`):
+
+```rust
+#[component]
+fn Greeting(name: String) -> Element {
+    rsx! { "Hello, {name}!" }
+}
+
+rsx! {
+    div {
+        Greeting { name: "World" }
+        Greeting { name: "Dioxus" }
+    }
+}
+```
+
+### Component Paths
+
+```rust
+rsx! {
+    // Absolute path
+    crate::components::Button { text: "Click" }
+    
+    // Relative path  
+    self::Button { text: "Click" }
+    
+    // Module path
+    ui::Button { text: "Click" }
+}
+```
+
+## Conditionals
+
+### If Statements
+
+Use if/else for conditional rendering:
+
+```rust
+let show_message = true;
+let count = 5;
+
+rsx! {
+    if show_message {
+        p { "Message is visible" }
+    }
+    
+    if count > 10 {
+        p { "Count is high" }
+    } else {
+        p { "Count is low" }
+    }
+}
+```
+
+### Match Expressions
+
+```rust
+enum Status {
+    Loading,
+    Success,
+    Error,
+}
+
+let status = Status::Success;
+
+rsx! {
+    match status {
+        Status::Loading => rsx! { p { "Loading..." } },
+        Status::Success => rsx! { p { "Success!" } },
+        Status::Error => rsx! { p { "Error!" } },
+    }
+}
+```
+
+### Optional Rendering
+
+```rust
+rsx! {
+    // Using .then()
+    {true.then(|| rsx! { p { "Shown" } })}
+    
+    // Using Option
+    {Some(rsx! { p { "Content" } })}
+    
+    // Empty fragments
+    Fragment {}
+}
+```
+
+## Loops
+
+### For Loops
+
+Iterate over collections:
+
+```rust
+let items = vec!["Apple", "Banana", "Cherry"];
+
+rsx! {
+    ul {
+        for item in items {
+            li { "{item}" }
+        }
+    }
+}
+```
+
+### With Keys
+
+Provide keys for stable identity:
+
+```rust
+let users = vec![
+    (1, "Alice"),
+    (2, "Bob"),
+];
+
+rsx! {
+    for (id, name) in users {
+        div {
+            key: "{id}",
+            "User: {name}"
+        }
+    }
+}
+```
+
+### Iterator Methods
+
+```rust
+rsx! {
+    {(0..10).map(|i| rsx! {
+        li { key: "{i}", "Item {i}" }
+    })}
+}
+```
+
+## Raw Expressions
+
+Embed Rust expressions directly:
+
+```rust
+let count = 5;
+let message = "Hello";
+
+rsx! {
+    div {
+        // Variables
+        {message}
+        
+        // Computations
+        {count * 2}
+        
+        // Method calls
+        {message.to_uppercase()}
+        
+        // Closures
+        {(|| "computed value")()}
+    }
+}
+```
+
+Expressions must implement `IntoDynNode` trait. Supported types include:
+- `String`, `&str`
+- Numbers (`i32`, `f64`, etc.)
+- `Element`
+- Iterators of `Element`
+- `Option<impl IntoDynNode>`
+
+## Fragments
+
+Group elements without a parent wrapper:
+
+```rust
+rsx! {
+    Fragment {
+        h1 { "Title" }
+        p { "Paragraph 1" }
+        p { "Paragraph 2" }
+    }
+}
+```
+
+Fragments can be nested and used in loops:
+
+```rust
+rsx! {
+    for i in 0..3 {
+        Fragment {
+            key: "{i}",
+            p { "Item {i}" }
+            hr {}
+        }
+    }
+}
+```
+
+## Event Handlers
+
+Handle events with the `on*` attributes:
+
+```rust
+let mut count = use_signal(|| 0);
+
+rsx! {
+    button {
+        onclick: move |event| {
+            println!("Button clicked!");
+            count += 1;
+        },
+        "Clicks: {count}"
+    }
+    
+    input {
+        oninput: move |event| {
+            println!("Input: {}", event.value());
+        },
+    }
+}
+```
+
+## Dangerous Inner HTML
+
+Set raw HTML (use with caution):
+
+```rust
+rsx! {
+    div {
+        dangerous_inner_html: "<p>Raw <strong>HTML</strong></p>"
+    }
+}
+```
+
+<Warning>
+Using `dangerous_inner_html` can expose your application to XSS attacks. Only use it with trusted content.
+</Warning>
+
+## Complete Example
+
+```rust
+use dioxus::prelude::*;
+
+#[component]
+fn TodoList() -> Element {
+    let mut todos = use_signal(|| vec![
+        (1, "Learn Dioxus", false),
+        (2, "Build an app", false),
+    ]);
+    let mut input = use_signal(|| String::new());
+    
+    rsx! {
+        div { class: "todo-app",
+            h1 { "My Todos" }
+            
+            div { class: "input-group",
+                input {
+                    value: "{input}",
+                    oninput: move |e| input.set(e.value()),
+                    placeholder: "Add a todo...",
+                }
+                button {
+                    onclick: move |_| {
+                        let id = todos.len() + 1;
+                        todos.push((id, input().clone(), false));
+                        input.set(String::new());
+                    },
+                    "Add"
+                }
+            }
+            
+            ul { class: "todo-list",
+                for (id, text, completed) in todos.read().iter() {
+                    li {
+                        key: "{id}",
+                        class: if *completed { "completed" } else { "" },
+                        span { "{text}" }
+                    }
+                }
+            }
+            
+            if todos.read().is_empty() {
+                p { class: "empty", "No todos yet!" }
+            }
+        }
+    }
+}
+```
+
+## See Also
+
+- [Components](/concepts/components) - Create reusable UI components
+- [Props](/concepts/props) - Pass data to components
+- [State](/concepts/state) - Manage application state

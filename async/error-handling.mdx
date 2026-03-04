@@ -1,0 +1,614 @@
+---
+title: Error Handling
+description: Handle errors gracefully in async Dioxus applications
+---
+
+# Error Handling in Async Dioxus
+
+Dioxus provides powerful error handling mechanisms that make it easy to catch, display, and recover from errors in your application.
+
+## ErrorBoundary Component
+
+The `ErrorBoundary` component catches errors from child components and renders a custom error UI:
+
+```rust
+use dioxus::prelude::*;
+
+fn app() -> Element {
+    rsx! {
+        ErrorBoundary {
+            handle_error: |error: ErrorContext| rsx! {
+                div { class: "error",
+                    h1 { "An error occurred" }
+                    pre { "{error:#?}" }
+                }
+            },
+            MyComponent {}
+        }
+    }
+}
+```
+
+## How It Works
+
+Dioxus automatically catches errors from:
+- **Rendering** - Errors returned from component functions
+- **Event handlers** - Errors returned from event handlers
+- **Async operations** - Errors from futures and resources
+- **Panics** - Panics in components (except in WASM)
+
+## Returning Errors
+
+Components and handlers can return `Result<Element, E>` where `E` implements `Into<anyhow::Error>`:
+
+```rust
+#[component]
+fn MyComponent() -> Element {
+    let data = fetch_data()?; // Returns early on error
+    
+    rsx! {
+        div { "Data: {data}" }
+    }
+}
+
+fn fetch_data() -> anyhow::Result<String> {
+    // Returns Result<String, anyhow::Error>
+    Ok("data".to_string())
+}
+```
+
+## Event Handler Errors
+
+Event handlers can return `Result<(), Error>`:
+
+```rust
+fn app() -> Element {
+    rsx! {
+        button {
+            onclick: move |_| {
+                let value: i32 = "not a number".parse()?;
+                println!("Parsed: {value}");
+                Ok(())
+            },
+            "Click to trigger error"
+        }
+    }
+}
+```
+
+## The `bail!` Macro
+
+Use the `bail!` macro to return early with an error:
+
+```rust
+use dioxus::prelude::*;
+
+fn validate_age(age: i32) -> Element {
+    if age < 0 {
+        bail!("Age cannot be negative");
+    }
+    if age > 150 {
+        bail!("Age seems unrealistic: {}", age);
+    }
+    
+    rsx! { "Valid age: {age}" }
+}
+```
+
+## ErrorContext API
+
+The `ErrorContext` provides information about caught errors:
+
+```rust
+ErrorBoundary {
+    handle_error: |context: ErrorContext| {
+        let error = context.error();
+        
+        rsx! {
+            div {
+                h2 { "Something went wrong" }
+                if let Some(err) = error {
+                    pre { "{err}" }
+                }
+            }
+        }
+    },
+    Content {}
+}
+```
+
+### Methods
+
+- **`error()`** - Get the current error (returns `Option<CapturedError>`)
+- **`clear_errors()`** - Clear all errors and retry rendering
+
+## Resetting Error Boundaries
+
+You can clear errors and retry rendering:
+
+```rust
+fn app() -> Element {
+    let mut input = use_signal(|| String::new());
+    
+    rsx! {
+        input {
+            value: "{input}",
+            oninput: move |e| input.set(e.value())
+        }
+        
+        ErrorBoundary {
+            handle_error: |error_context| rsx! {
+                div { class: "error",
+                    "Error: {error_context.error():?}"
+                    button {
+                        onclick: move |_| {
+                            // Clear the error and retry
+                            error_context.clear_errors();
+                        },
+                        "Try again"
+                    }
+                }
+            },
+            ParseNumber { input: input() }
+        }
+    }
+}
+
+#[component]
+fn ParseNumber(input: String) -> Element {
+    let number: i32 = input.parse()?;
+    rsx! { "Parsed number: {number}" }
+}
+```
+
+## Error Type Checking
+
+You can downcast errors to specific types for custom handling:
+
+```rust
+use std::num::ParseIntError;
+
+ErrorBoundary {
+    handle_error: |context: ErrorContext| {
+        if let Some(error) = context.error() {
+            // Check for specific error type
+            if let Some(parse_error) = error.downcast_ref::<ParseIntError>() {
+                return rsx! {
+                    div { class: "parse-error",
+                        "Invalid number format"
+                        p { "Please enter a valid integer" }
+                    }
+                };
+            }
+        }
+        
+        // Default error display
+        rsx! {
+            div { class: "error",
+                "An unexpected error occurred"
+            }
+        }
+    },
+    Content {}
+}
+```
+
+## Multiple Error Types
+
+Iterate over all errors:
+
+```rust
+ErrorBoundary {
+    handle_error: |context: ErrorContext| rsx! {
+        div { class: "errors",
+            h2 { "Errors occurred:" }
+            for error in context.error() {
+                div { class: "error-item",
+                    if let Some(parse_err) = error.downcast_ref::<ParseIntError>() {
+                        div { 
+                            background_color: "red",
+                            "Parse error: {parse_err}"
+                        }
+                    } else {
+                        div { "{error}" }
+                    }
+                }
+            }
+        }
+    },
+    Content {}
+}
+```
+
+## Catching Panics
+
+On desktop platforms, Dioxus catches panics automatically:
+
+```rust
+#[component]
+fn PanickingComponent() -> Element {
+    panic!("This component panics!");
+}
+
+fn app() -> Element {
+    rsx! {
+        ErrorBoundary {
+            handle_error: |error| rsx! {
+                div { "Caught a panic: {error:#?}" }
+            },
+            PanickingComponent {}
+        }
+    }
+}
+```
+
+**Note:** In WASM, panics cannot currently be caught by error boundaries due to browser limitations.
+
+## Async Error Handling
+
+### With use_resource
+
+```rust
+fn app() -> Element {
+    let data = use_resource(|| async move {
+        reqwest::get("https://api.example.com/data")
+            .await?
+            .json::<MyData>()
+            .await
+    });
+    
+    match &*data.read_unchecked() {
+        Some(Ok(value)) => rsx! { "Success: {value}" },
+        Some(Err(err)) => rsx! { 
+            div { class: "error",
+                "Failed to fetch data: {err}"
+            }
+        },
+        None => rsx! { "Loading..." },
+    }
+}
+```
+
+### With Suspense
+
+Combine `ErrorBoundary` with `SuspenseBoundary`:
+
+```rust
+fn app() -> Element {
+    rsx! {
+        ErrorBoundary {
+            handle_error: |err| rsx! { "Error: {err}" },
+            SuspenseBoundary {
+                fallback: |_| rsx! { "Loading..." },
+                AsyncContent {}
+            }
+        }
+    }
+}
+
+#[component]
+fn AsyncContent() -> Element {
+    let data = use_resource(|| async move {
+        fetch_data().await // Can fail
+    });
+    
+    let data = data.suspend()?; // Throws error if fetch failed
+    
+    rsx! { "Data: {data}" }
+}
+```
+
+## Error Propagation
+
+Errors bubble up to the nearest error boundary:
+
+```rust
+fn app() -> Element {
+    rsx! {
+        // Outer boundary catches all errors
+        ErrorBoundary {
+            handle_error: |err| rsx! { "Top-level error: {err}" },
+            
+            // Inner components can throw errors
+            Level1 {}
+        }
+    }
+}
+
+#[component]
+fn Level1() -> Element {
+    rsx! {
+        Level2 {}
+    }
+}
+
+#[component]
+fn Level2() -> Element {
+    // This error propagates up to the ErrorBoundary
+    bail!("Error from Level2");
+}
+```
+
+## Nested Error Boundaries
+
+Use multiple boundaries for granular error handling:
+
+```rust
+fn app() -> Element {
+    rsx! {
+        // Global error boundary
+        ErrorBoundary {
+            handle_error: |err| rsx! {
+                div { class: "critical-error",
+                    "Critical application error: {err}"
+                }
+            },
+            
+            div {
+                h1 { "My App" }
+                
+                // User section with its own error handling
+                ErrorBoundary {
+                    handle_error: |err| rsx! {
+                        div { class: "user-error",
+                            "Failed to load user: {err}"
+                        }
+                    },
+                    UserProfile {}
+                }
+                
+                // Posts section with separate error handling
+                ErrorBoundary {
+                    handle_error: |err| rsx! {
+                        div { class: "posts-error",
+                            "Failed to load posts: {err}"
+                        }
+                    },
+                    PostsList {}
+                }
+            }
+        }
+    }
+}
+```
+
+## Custom Error Types
+
+Create custom error types for your application:
+
+```rust
+use thiserror::Error;
+
+#[derive(Error, Debug)]
+enum AppError {
+    #[error("Network error: {0}")]
+    Network(#[from] reqwest::Error),
+    
+    #[error("Parse error: {0}")]
+    Parse(#[from] std::num::ParseIntError),
+    
+    #[error("Not found: {0}")]
+    NotFound(String),
+    
+    #[error("Unauthorized")]
+    Unauthorized,
+}
+
+fn fetch_user(id: i32) -> Result<User, AppError> {
+    if id < 0 {
+        return Err(AppError::NotFound(format!("User {id}")));
+    }
+    // ...
+    Ok(User { id, name: "Alice".to_string() })
+}
+
+#[component]
+fn UserComponent(id: i32) -> Element {
+    let user = fetch_user(id)?;
+    
+    rsx! {
+        div { "User: {user.name}" }
+    }
+}
+```
+
+Then handle them specifically:
+
+```rust
+ErrorBoundary {
+    handle_error: |context| {
+        if let Some(error) = context.error() {
+            if let Some(app_err) = error.downcast_ref::<AppError>() {
+                return match app_err {
+                    AppError::Network(e) => rsx! {
+                        div { "Network issue: {e}. Please check your connection." }
+                    },
+                    AppError::NotFound(item) => rsx! {
+                        div { "{item} not found" }
+                    },
+                    AppError::Unauthorized => rsx! {
+                        div { "Please log in to continue" }
+                    },
+                    _ => rsx! { "An error occurred: {app_err}" },
+                };
+            }
+        }
+        rsx! { "Unknown error" }
+    },
+    MyApp {}
+}
+```
+
+## Best Practices
+
+### 1. Use Specific Error Types
+
+Define clear error types for different parts of your app:
+
+```rust
+#[derive(Error, Debug)]
+enum UserError {
+    #[error("User not found")]
+    NotFound,
+    #[error("Invalid user data")]
+    InvalidData,
+}
+
+#[derive(Error, Debug)]
+enum PaymentError {
+    #[error("Payment declined")]
+    Declined,
+    #[error("Insufficient funds")]
+    InsufficientFunds,
+}
+```
+
+### 2. Provide Context
+
+Add context to errors for better debugging:
+
+```rust
+use anyhow::Context;
+
+fn load_config() -> anyhow::Result<Config> {
+    let contents = std::fs::read_to_string("config.toml")
+        .context("Failed to read config file")?;
+    
+    let config: Config = toml::from_str(&contents)
+        .context("Failed to parse config")?;
+    
+    Ok(config)
+}
+```
+
+### 3. User-Friendly Error Messages
+
+Show helpful messages to users:
+
+```rust
+ErrorBoundary {
+    handle_error: |context| rsx! {
+        div { class: "error-card",
+            h2 { "Oops! Something went wrong" }
+            p { "We're having trouble loading this page." }
+            button {
+                onclick: move |_| context.clear_errors(),
+                "Try Again"
+            }
+            details {
+                summary { "Technical details" }
+                pre { "{context.error():?}" }
+            }
+        }
+    },
+    Content {}
+}
+```
+
+### 4. Log Errors
+
+Log errors for monitoring:
+
+```rust
+ErrorBoundary {
+    handle_error: |context| {
+        if let Some(error) = context.error() {
+            tracing::error!("Component error: {:?}", error);
+            // Or send to error tracking service
+        }
+        rsx! { "An error occurred" }
+    },
+    Content {}
+}
+```
+
+### 5. Granular Boundaries
+
+Use multiple boundaries to isolate failures:
+
+```rust
+rsx! {
+    // Each section can fail independently
+    ErrorBoundary { handle_error: |e| rsx! { "Header error" }, Header {} }
+    ErrorBoundary { handle_error: |e| rsx! { "Content error" }, Content {} }
+    ErrorBoundary { handle_error: |e| rsx! { "Footer error" }, Footer {} }
+}
+```
+
+## Complete Example
+
+Here's a complete example showing error handling with async data:
+
+```rust
+use dioxus::prelude::*;
+use thiserror::Error;
+
+#[derive(Error, Debug, Clone)]
+enum ApiError {
+    #[error("Network error")]
+    Network,
+    #[error("Not found")]
+    NotFound,
+    #[error("Server error")]
+    Server,
+}
+
+fn app() -> Element {
+    rsx! {
+        ErrorBoundary {
+            handle_error: |context| rsx! {
+                div { class: "error-container",
+                    h1 { "Error" }
+                    p { "{context.error():?}" }
+                    button {
+                        onclick: move |_| context.clear_errors(),
+                        "Retry"
+                    }
+                }
+            },
+            SuspenseBoundary {
+                fallback: |_| rsx! { "Loading user..." },
+                UserProfile { user_id: 1 }
+            }
+        }
+    }
+}
+
+#[component]
+fn UserProfile(user_id: i32) -> Element {
+    let user = use_resource(move || async move {
+        fetch_user(user_id).await
+    });
+    
+    let user = user.suspend()?;
+    
+    rsx! {
+        div {
+            h2 { "{user.name}" }
+            p { "{user.email}" }
+        }
+    }
+}
+
+async fn fetch_user(id: i32) -> Result<User, ApiError> {
+    // Simulated API call
+    if id < 0 {
+        return Err(ApiError::NotFound);
+    }
+    Ok(User {
+        name: "Alice".to_string(),
+        email: "alice@example.com".to_string(),
+    })
+}
+
+struct User {
+    name: String,
+    email: String,
+}
+```
+
+## Next Steps
+
+- Learn about [Suspense boundaries](/async/suspense) for loading states
+- Understand [use_resource](/async/use-resource) for data fetching
+- See [Futures](/async/futures) for background tasks

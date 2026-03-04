@@ -1,0 +1,692 @@
+---
+title: Bundling
+description: Creating production-ready packages and optimizing Dioxus applications for deployment
+---
+
+Dioxus CLI provides comprehensive bundling capabilities to package your application for production across all supported platforms - web, desktop, and mobile.
+
+## Build vs Bundle
+
+Understand the difference between these commands:
+
+**`dx build`** - Compiles your application and assets into an executable/WASM:
+- Produces runnable binaries
+- Optimizes for target platform
+- Processes assets and static files
+- Output: executable + assets in `out_dir`
+
+**`dx bundle`** - Packages the built application into distributable formats:
+- Creates installers, app bundles, packages
+- Platform-specific formats (DMG, MSI, AppImage, etc.)
+- Includes dependencies and resources
+- Output: ready-to-distribute packages
+
+```bash
+# Build for production
+dx build --release --platform desktop
+
+# Then bundle into installer
+dx bundle --release --platform desktop --package-types dmg
+```
+
+## Production Builds
+
+### Web (WASM)
+
+Build an optimized web application:
+
+```bash
+dx build --platform web --release
+```
+
+**Output structure:**
+```
+dist/
+├── index.html              # Entry point
+├── assets/
+│   ├── dioxus/
+│   │   ├── my-app.js       # JS bindings
+│   │   └── my-app.wasm     # Optimized WASM
+│   ├── tailwind.css        # Processed styles
+│   └── [hashed-assets]     # Static assets with cache-busting hashes
+└── [public files]          # Copied from public_dir
+```
+
+**Optimizations Applied:**
+
+1. **WASM Optimization** via `wasm-opt`:
+   - Dead code elimination
+   - Function inlining
+   - Size reduction (typically 30-50%)
+
+2. **Asset Processing**:
+   - Hash-based filenames for cache busting
+   - Tailwind CSS purging (unused styles removed)
+   - Image optimization (via `manganis`)
+
+3. **Optional Pre-Compression**:
+   ```toml
+   [web]
+   pre_compress = true
+   ```
+   Generates `.gz` and `.br` files for faster loading.
+
+### WASM Optimization Levels
+
+Configure in `Dioxus.toml`:
+
+```toml
+[web.wasm_opt]
+# "z" (default) - Aggressive size optimization
+# "s" - Size optimization
+# "0" - No optimization (fastest builds)
+# "1-4" - Speed optimization levels
+level = "z"
+
+# Keep function names for better error messages
+keep_names = false
+
+# Keep full debug symbols (large file size)
+debug = false
+```
+
+**Performance Comparison:**
+
+| Level | Build Time | WASM Size | Runtime Speed |
+|-------|-----------|-----------|---------------|
+| `z` | Slow | Smallest | Good |
+| `s` | Medium | Small | Good |
+| `0` | Fast | Large | Good |
+| `4` | Slowest | Largest | Fastest |
+
+### Desktop Applications
+
+Build native desktop apps:
+
+```bash
+# macOS
+dx build --platform desktop --release --target aarch64-apple-darwin
+
+# Windows
+dx build --platform desktop --release --target x86_64-pc-windows-msvc
+
+# Linux
+dx build --platform desktop --release --target x86_64-unknown-linux-gnu
+```
+
+**Output:**
+- Standalone executable
+- Bundled webview (Wry/Tao)
+- Assets embedded or copied alongside
+
+### Mobile Applications
+
+**iOS:**
+
+```bash
+dx build --platform ios --release
+```
+
+Output: Xcode project + compiled library
+
+**Android:**
+
+```bash
+dx build --platform android --release
+```
+
+Output: APK or AAB (depending on Gradle configuration)
+
+## Platform Bundling
+
+### macOS Bundles
+
+Create macOS app bundles and installers:
+
+```bash
+# App bundle (.app)
+dx bundle --platform macos --package-types app
+
+# Disk image (.dmg)
+dx bundle --platform macos --package-types dmg
+```
+
+**Configuration:**
+
+```toml
+[bundle]
+identifier = "com.mycompany.myapp"
+icon = ["assets/icon.icns"]
+
+[macos]
+identifier = "com.mycompany.myapp.macos"
+info_plist = "macos/Info.plist"
+entitlements = "macos/entitlements.plist"
+```
+
+**Entitlements** (`macos/entitlements.plist`):
+
+```xml
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>com.apple.security.app-sandbox</key>
+    <true/>
+    <key>com.apple.security.network.client</key>
+    <true/>
+</dict>
+</plist>
+```
+
+<Warning>
+macOS bundles require **code signing** for distribution. Use Xcode or `codesign` tool.
+</Warning>
+
+### Windows Installers
+
+```bash
+# MSI installer
+dx bundle --platform windows --package-types msi
+
+# NSIS installer (.exe)
+dx bundle --platform windows --package-types nsis
+```
+
+**Configuration:**
+
+```toml
+[bundle]
+identifier = "com.mycompany.myapp"
+icon = ["assets/icon.ico"]
+publisher = "My Company"
+
+[windows]
+identifier = "com.mycompany.myapp.windows"
+```
+
+### Linux Packages
+
+```bash
+# Debian package
+dx bundle --platform linux --package-types deb
+
+# RPM package
+dx bundle --platform linux --package-types rpm
+
+# AppImage (portable)
+dx bundle --platform linux --package-types appimage
+```
+
+**Configuration:**
+
+```toml
+[bundle]
+identifier = "com.mycompany.myapp"
+icon = ["assets/icon.png"]
+category = "Utility"
+
+[linux]
+identifier = "com.mycompany.myapp.linux"
+```
+
+**Categories** (Linux desktop files):
+- `AudioVideo`, `Audio`, `Video`
+- `Development`, `Education`, `Game`
+- `Graphics`, `Network`, `Office`
+- `Science`, `Settings`, `System`
+- `Utility`
+
+### iOS Bundles
+
+```bash
+dx bundle --platform ios --package-types ios-bundle
+```
+
+**Output:** `.app` bundle in `dist/`
+
+**Configuration:**
+
+```toml
+[ios]
+identifier = "com.mycompany.myapp.ios"
+deployment_target = "14.0"
+info_plist = "ios/Info.plist"
+entitlements = "ios/entitlements.plist"
+```
+
+<Warning>
+iOS bundles are **not automatically codesigned**. You must sign them before installing on devices or submitting to the App Store.
+</Warning>
+
+**Code Signing:**
+
+```bash
+# Sign the bundle
+codesign --force --sign "Apple Development: Your Name" \
+  --entitlements ios/entitlements.plist \
+  dist/MyApp.app
+
+# Verify signature
+codesign --verify --verbose dist/MyApp.app
+```
+
+### Android Packages
+
+```bash
+# APK (for testing/sideloading)
+dx bundle --platform android
+
+# AAB (for Play Store)
+dx bundle --platform android --package-types aab
+```
+
+**Configuration:**
+
+```toml
+[android]
+identifier = "com.mycompany.myapp"
+min_sdk_version = 24
+manifest = "android/AndroidManifest.xml"
+```
+
+**Signing** (required for release):
+
+Create keystore:
+```bash
+keytool -genkey -v -keystore release.keystore \
+  -alias myapp -keyalg RSA -keysize 2048 -validity 10000
+```
+
+Sign APK:
+```bash
+jarsigner -verbose -sigalg SHA256withRSA -digestalg SHA256 \
+  -keystore release.keystore dist/app-release.apk myapp
+```
+
+## Asset Optimization
+
+### Automatic Asset Processing
+
+The CLI automatically processes assets referenced via `asset!()`:
+
+```rust
+use manganis::asset;
+
+const LOGO: Asset = asset!("./assets/logo.png");
+const STYLESHEET: Asset = asset!("./assets/main.css");
+```
+
+**Processing:**
+1. **Hash calculation** for cache busting
+2. **Image optimization** (PNG, JPEG, WebP)
+3. **CSS minification**
+4. **Path rewriting** for deployment
+
+### Tailwind CSS Integration
+
+The CLI automatically detects and processes Tailwind:
+
+**Detected by:**
+- `tailwind.config.js` / `tailwind.config.ts` → Tailwind v3
+- `tailwind.css` → Tailwind v4
+
+**Auto-installed** on first build (no manual setup required).
+
+**Build process:**
+1. Scans source files for classes
+2. Generates minimal CSS (unused classes removed)
+3. Minifies for production
+
+**Custom Configuration:**
+
+```toml
+[application]
+tailwind_input = "styles/input.css"
+tailwind_output = "assets/styles.css"
+```
+
+### Public Directory
+
+Static files copied verbatim:
+
+```toml
+[application]
+public_dir = "public"
+```
+
+```
+public/
+├── favicon.ico          # Copied to dist/favicon.ico
+├── robots.txt
+└── images/
+    └── banner.jpg
+```
+
+These files are **not** processed or optimized - use for:
+- Pre-optimized images
+- Third-party libraries
+- SEO files (`robots.txt`, `sitemap.xml`)
+
+## Fullstack Applications
+
+### Client + Server Builds
+
+Build both client and server in one command:
+
+```bash
+dx build --fullstack --release
+```
+
+**Output:**
+```
+dist/
+├── public/              # Client assets (WASM, JS, HTML)
+│   ├── index.html
+│   └── assets/
+└── server               # Server executable
+```
+
+### Static Site Generation (SSG)
+
+Pre-render routes at build time:
+
+```bash
+dx build --fullstack --ssg --release
+```
+
+The server builds, runs, and generates static HTML for all routes returned by `/static_routes` endpoint.
+
+**Benefits:**
+- Instant page loads (no server roundtrip)
+- Better SEO (crawlers see full HTML)
+- Reduced server load
+
+**Configuration:**
+
+```rust
+#[component]
+fn App() -> Element {
+    rsx! {
+        Router::<Route> {}
+    }
+}
+
+// Define which routes to pre-render
+#[server]
+async fn static_routes() -> Vec<String> {
+    vec![
+        "/".to_string(),
+        "/about".to_string(),
+        "/blog/post-1".to_string(),
+    ]
+}
+```
+
+## Optimization Strategies
+
+### Build Size Optimization
+
+**1. Enable LTO (Link-Time Optimization):**
+
+```toml
+# Cargo.toml
+[profile.release]
+lto = true
+codegen-units = 1
+opt-level = "z"  # Optimize for size
+strip = true     # Remove symbols
+```
+
+**2. WASM Optimization:**
+
+```toml
+# Dioxus.toml
+[web.wasm_opt]
+level = "z"
+memory_packing = true
+```
+
+**3. Remove Unused Dependencies:**
+
+```bash
+cargo tree --duplicates
+cargo bloat --release --crates
+```
+
+**4. Feature Flags:**
+
+Disable unused features:
+
+```toml
+[dependencies]
+dioxus = { version = "0.7", default-features = false, features = ["web"] }
+```
+
+### Runtime Performance
+
+**1. Code Splitting** (for web):
+
+Lazy load components:
+
+```rust
+use dioxus::prelude::*;
+
+#[component]
+fn App() -> Element {
+    rsx! {
+        Suspense {
+            fallback: |_| rsx! { "Loading..." },
+            LazyComponent {}
+        }
+    }
+}
+
+#[component]
+fn LazyComponent() -> Element {
+    // Heavy component loaded on demand
+    rsx! { /* ... */ }
+}
+```
+
+**2. Asset Optimization:**
+
+- Use WebP for images
+- Compress images before bundling
+- Use SVG for icons
+- Minimize CSS/JS
+
+**3. Pre-compression:**
+
+```toml
+[web]
+pre_compress = true
+```
+
+Generates `.gz` and `.br` files - configure your server to serve them.
+
+## Deployment
+
+### Web Deployment
+
+**Static Hosting** (GitHub Pages, Netlify, Vercel):
+
+```bash
+dx build --platform web --release
+
+# Upload dist/ directory
+```
+
+**With Base Path** (for GitHub Pages subdirectory):
+
+```toml
+[web.app]
+base_path = "/my-repo"
+```
+
+**Server Configuration** (nginx example):
+
+```nginx
+server {
+    root /var/www/myapp/dist;
+    
+    # Serve pre-compressed files
+    gzip_static on;
+    brotli_static on;
+    
+    # Cache assets with hashes
+    location /assets/ {
+        expires 1y;
+        add_header Cache-Control "public, immutable";
+    }
+    
+    # SPA fallback
+    location / {
+        try_files $uri $uri/ /index.html;
+    }
+}
+```
+
+### Desktop Deployment
+
+**macOS:**
+1. Build and bundle: `dx bundle --platform macos --package-types dmg`
+2. Code sign the `.app` bundle
+3. Notarize with Apple (for Gatekeeper)
+4. Distribute the `.dmg`
+
+**Windows:**
+1. Build and bundle: `dx bundle --platform windows --package-types msi`
+2. Sign the installer (optional but recommended)
+3. Distribute the `.msi`
+
+**Linux:**
+1. Build for multiple formats: `dx bundle --platform linux --package-types deb,appimage`
+2. Distribute packages via package managers or direct download
+
+### Mobile Deployment
+
+**iOS (App Store):**
+1. Build: `dx bundle --platform ios`
+2. Open in Xcode
+3. Configure signing & provisioning
+4. Archive and upload to App Store Connect
+
+**Android (Play Store):**
+1. Build AAB: `dx bundle --platform android --package-types aab`
+2. Sign with release keystore
+3. Upload to Google Play Console
+
+## CI/CD Integration
+
+### GitHub Actions Example
+
+```yaml
+name: Build and Deploy
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      
+      - name: Install Rust
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          target: wasm32-unknown-unknown
+      
+      - name: Install Dioxus CLI
+        run: cargo install dioxus-cli
+      
+      - name: Build
+        run: dx build --platform web --release
+      
+      - name: Deploy to GitHub Pages
+        uses: peaceiris/actions-gh-pages@v3
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./dist
+```
+
+### Multi-Platform Builds
+
+```yaml
+strategy:
+  matrix:
+    include:
+      - os: ubuntu-latest
+        platform: linux
+        package: deb
+      - os: macos-latest
+        platform: macos
+        package: dmg
+      - os: windows-latest
+        platform: windows
+        package: msi
+
+steps:
+  - name: Build
+    run: dx bundle --platform ${{ matrix.platform }} --package-types ${{ matrix.package }} --release
+  
+  - name: Upload Artifacts
+    uses: actions/upload-artifact@v3
+    with:
+      name: ${{ matrix.platform }}-bundle
+      path: dist/
+```
+
+## Troubleshooting
+
+### Large WASM Size
+
+**Check:**
+1. Is `--release` enabled?
+2. Is `wasm-opt` running? (check logs)
+3. Are you using `opt-level = "z"` in `Cargo.toml`?
+4. Remove `console_error_panic_hook` in production
+
+**Analyze:**
+```bash
+wasm-opt --print-function-sizes dist/assets/dioxus/my-app.wasm
+```
+
+### Bundle Errors
+
+**Missing icon:**
+```
+Error: Icon file not found: assets/icon.png
+```
+Ensure icon paths in `Dioxus.toml` are correct.
+
+**Invalid identifier:**
+```
+Error: Bundle identifier must be reverse domain notation
+```
+Use format: `com.company.app`
+
+### Deployment Issues
+
+**404 on routes (SPA):**
+Configure server fallback to `index.html` for unknown routes.
+
+**WASM not loading:**
+Check MIME type: server must send `application/wasm` for `.wasm` files.
+
+**Assets not found:**
+Verify `base_path` in `Dioxus.toml` matches deployment path.
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Configuration" icon="gear" href="/cli/configuration">
+    Configure bundle settings
+  </Card>
+  <Card title="Commands" icon="terminal" href="/cli/commands">
+    Learn about build commands
+  </Card>
+</CardGroup>

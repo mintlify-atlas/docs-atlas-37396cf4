@@ -1,0 +1,486 @@
+---
+title: "VirtualDom"
+description: "The VirtualDom engine for managing UI state and rendering in Dioxus"
+---
+
+## Overview
+
+The `VirtualDom` is the core engine that manages component state, tracks updates, and generates mutations for renderers. It implements a concurrent, async-aware virtual DOM with support for suspense, error boundaries, and efficient diffing.
+
+## VirtualDom Structure
+
+```rust
+pub struct VirtualDom {
+    scopes: Slab<ScopeState>,
+    dirty_scopes: BTreeSet<ScopeOrder>,
+    runtime: Rc<Runtime>,
+    resolved_scopes: Vec<ScopeId>,
+    rx: UnboundedReceiver<SchedulerMsg>,
+}
+```
+
+## Creating a VirtualDom
+
+### Basic Creation
+
+```rust
+use dioxus::prelude::*;
+
+fn app() -> Element {
+    rsx! { div { "Hello, world!" } }
+}
+
+let mut dom = VirtualDom::new(app);
+```
+
+### With Props
+
+```rust
+use dioxus::prelude::*;
+
+#[derive(PartialEq, Props, Clone)]
+struct AppProps {
+    title: String,
+}
+
+fn app(props: AppProps) -> Element {
+    rsx! { h1 { "{props.title}" } }
+}
+
+let mut dom = VirtualDom::new_with_props(
+    app,
+    AppProps { title: "My App".to_string() },
+);
+```
+
+### Prebuilt VirtualDom
+
+```rust
+// Create and immediately build the initial tree
+let mut dom = VirtualDom::prebuilt(app);
+```
+
+### With Root Context
+
+```rust
+#[derive(Clone)]
+struct AppConfig {
+    api_url: String,
+}
+
+let dom = VirtualDom::new(app)
+    .with_root_context(AppConfig {
+        api_url: "https://api.example.com".to_string(),
+    });
+```
+
+## Rendering
+
+### Initial Render
+
+```rust
+use dioxus::prelude::*;
+
+let mut dom = VirtualDom::new(app);
+let mut mutations = Mutations::default();
+
+// Generate the initial UI
+dom.rebuild(&mut mutations);
+
+// Apply mutations to your renderer
+for edit in mutations.edits {
+    // Handle edit
+}
+```
+
+### Render to Vec
+
+```rust
+// For testing or simple cases
+let mutations = dom.rebuild_to_vec();
+```
+
+### In-place Rebuild
+
+```rust
+// Rebuild without collecting mutations
+dom.rebuild_in_place();
+```
+
+## Update Cycle
+
+### Immediate Rendering
+
+```rust
+use dioxus::prelude::*;
+
+let mut dom = VirtualDom::new(app);
+let mut mutations = Mutations::default();
+
+dom.rebuild(&mut mutations);
+
+loop {
+    // Wait for work
+    dom.wait_for_work().await;
+    
+    // Render all dirty components
+    mutations.edits.clear();
+    dom.render_immediate(&mut mutations);
+    
+    // Apply mutations
+    for edit in &mutations.edits {
+        // Handle edit
+    }
+}
+```
+
+### Render to Vec
+
+```rust
+// For testing
+let mutations = dom.render_immediate_to_vec();
+```
+
+## Event Loop
+
+A complete event loop integrating VirtualDom with a renderer:
+
+```rust
+use dioxus::prelude::*;
+
+#[component]
+fn app() -> Element {
+    let mut count = use_signal(|| 0);
+    
+    rsx! {
+        button {
+            onclick: move |_| count += 1,
+            "Count: {count}"
+        }
+    }
+}
+
+async fn run() {
+    let mut dom = VirtualDom::new(app);
+    let mut mutations = Mutations::default();
+    
+    // Initial render
+    dom.rebuild(&mut mutations);
+    apply_mutations(&mutations);
+    
+    loop {
+        tokio::select! {
+            // Wait for component updates
+            _ = dom.wait_for_work() => {
+                mutations.edits.clear();
+                dom.render_immediate(&mut mutations);
+                apply_mutations(&mutations);
+            }
+            
+            // Handle user events
+            event = wait_for_event() => {
+                let evt = Event::new(event.data, true);
+                dom.runtime().handle_event(
+                    &event.name,
+                    evt,
+                    event.element_id,
+                );
+            }
+        }
+    }
+}
+```
+
+## Suspense
+
+### Wait for Suspense
+
+```rust
+use dioxus::prelude::*;
+
+let mut dom = VirtualDom::new(app);
+
+// Build initial tree
+dom.rebuild_in_place();
+
+// Wait for all suspense boundaries to resolve
+dom.wait_for_suspense().await;
+
+// Now the tree is fully rendered
+let mutations = dom.rebuild_to_vec();
+```
+
+### Check Suspended Tasks
+
+```rust
+if dom.suspended_tasks_remaining() {
+    println!("Still waiting for suspended tasks");
+}
+```
+
+### Render During Suspense
+
+```rust
+// Render scopes that are ready, even during suspense
+let resolved = dom.render_suspense_immediate().await;
+
+for scope_id in resolved {
+    println!("Resolved scope: {:?}", scope_id);
+}
+```
+
+## Scope Management
+
+### Access Scopes
+
+```rust
+// Get a specific scope
+if let Some(scope) = dom.get_scope(scope_id) {
+    let node = scope.root_node();
+    // Work with scope
+}
+
+// Get the root scope
+let root = dom.base_scope();
+```
+
+### Mark Dirty
+
+```rust
+// Manually mark a scope for re-render
+dom.mark_dirty(scope_id);
+
+// Mark all scopes dirty
+dom.mark_all_dirty();
+```
+
+### Run in Runtime Context
+
+```rust
+dom.in_runtime(|| {
+    // Code runs with runtime active
+    let signal = use_signal(|| 0);
+});
+```
+
+### Run in Scope
+
+```rust
+dom.in_scope(scope_id, || {
+    // Code runs in this scope's context
+});
+```
+
+## Context Injection
+
+### Provide Root Context
+
+```rust
+#[derive(Clone)]
+struct Config {
+    debug: bool,
+}
+
+// During creation
+let dom = VirtualDom::new(app)
+    .with_root_context(Config { debug: true });
+
+// After creation
+dom.provide_root_context(Config { debug: false });
+
+// Type-erased context
+dom.insert_any_root_context(Box::new(Config { debug: true }));
+```
+
+## Runtime Access
+
+```rust
+let runtime = dom.runtime();
+
+// Handle events
+let event = Event::new(event_data, true);
+runtime.handle_event("onclick", event, element_id);
+
+// Spawn tasks
+runtime.spawn(async {
+    // Async work
+});
+```
+
+## Diffing Algorithm
+
+The VirtualDom uses an efficient diffing algorithm that:
+
+1. **Templates are compared by pointer** - Static templates are only created once
+2. **Dynamic nodes are diffed recursively** - Only changed parts update
+3. **Keys enable list optimization** - Reordering lists is efficient
+
+### Example: List Diffing
+
+```rust
+#[component]
+fn TodoList(todos: Vec<Todo>) -> Element {
+    rsx! {
+        ul {
+            // Keys help diff algorithm track items
+            for todo in todos {
+                li { key: "{todo.id}",
+                    "{todo.text}"
+                }
+            }
+        }
+    }
+}
+```
+
+## Mutations
+
+The `Mutations` struct contains the list of edits to apply:
+
+```rust
+pub struct Mutations {
+    pub edits: Vec<Mutation>,
+    pub templates: Vec<Template>,
+}
+
+pub enum Mutation {
+    CreateElement { tag: &'static str, id: ElementId },
+    CreateTextNode { text: String, id: ElementId },
+    SetAttribute { name: &'static str, value: AttributeValue, id: ElementId },
+    RemoveAttribute { name: &'static str, id: ElementId },
+    AppendChildren { id: ElementId, m: usize },
+    ReplaceWith { id: ElementId, m: usize },
+    Remove { id: ElementId },
+    // ... more variants
+}
+```
+
+### Processing Mutations
+
+```rust
+use dioxus::prelude::*;
+
+struct MyRenderer;
+
+impl WriteMutations for MyRenderer {
+    fn append_children(&mut self, id: ElementId, m: usize) {
+        // Append m children from stack to element
+    }
+    
+    fn create_element(&mut self, tag: &str, id: ElementId) {
+        // Create element and push to stack
+    }
+    
+    fn create_text_node(&mut self, text: &str, id: ElementId) {
+        // Create text node and push to stack
+    }
+    
+    // ... implement other methods
+}
+```
+
+## Advanced Features
+
+### Process Events
+
+```rust
+// Process all queued events synchronously
+dom.process_events();
+```
+
+### Wait for Work
+
+```rust
+// Async wait for any work (events, tasks, signals)
+dom.wait_for_work().await;
+```
+
+### Check for Dirty Scopes
+
+```rust
+if dom.has_dirty_scopes() {
+    // Render needed
+}
+```
+
+## Testing
+
+```rust
+use dioxus::prelude::*;
+
+#[test]
+fn test_component() {
+    fn app() -> Element {
+        rsx! { div { "Hello" } }
+    }
+    
+    let mut dom = VirtualDom::new(app);
+    let mutations = dom.rebuild_to_vec();
+    
+    // Assert mutations are correct
+    assert_eq!(mutations.edits.len(), 3);
+}
+```
+
+### Async Testing
+
+```rust
+#[tokio::test]
+async fn test_suspense() {
+    fn app() -> Element {
+        let resource = use_resource(|| async {
+            // Fetch data
+        });
+        
+        rsx! {
+            match resource() {
+                Some(data) => rsx! { div { "{data}" } },
+                None => rsx! { div { "Loading..." } },
+            }
+        }
+    }
+    
+    let mut dom = VirtualDom::new(app);
+    dom.rebuild_in_place();
+    dom.wait_for_suspense().await;
+    
+    let mutations = dom.rebuild_to_vec();
+    // Assert rendered correctly
+}
+```
+
+## Performance
+
+### Memoization
+
+```rust
+// Components with PartialEq props are memoized
+#[derive(Props, PartialEq, Clone)]
+struct ExpensiveProps {
+    data: Vec<i32>,
+}
+
+#[component]
+fn Expensive(props: ExpensiveProps) -> Element {
+    // Only re-renders when props.data changes
+    rsx! { div { "Rendered" } }
+}
+```
+
+### Keys for Lists
+
+```rust
+// Always use keys for dynamic lists
+rsx! {
+    for item in items {
+        div { key: "{item.id}", "{item.name}" }
+    }
+}
+```
+
+## See Also
+
+- [Component](/api/core/component) - Creating components
+- [Element](/api/core/element) - Virtual nodes
+- [Scope](/api/core/scope) - Component context
+- [VirtualDom Guide](https://dioxuslabs.com/learn/0.6/guide/your_first_component)

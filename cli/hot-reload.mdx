@@ -1,0 +1,484 @@
+---
+title: Hot-Reload
+description: Understanding Dioxus's dual hot-reload system - RSX template hot-reload and Subsecond hot-patching
+---
+
+Dioxus provides two complementary hot-reload systems that work together to give you the fastest possible development experience:
+
+1. **RSX Template Hot-Reload** - Instant UI updates for template changes (milliseconds)
+2. **Subsecond Hot-Patching** - Full Rust code hot-reload without restart (experimental)
+
+Both systems work seamlessly during development with `dx serve`.
+
+## RSX Template Hot-Reload
+
+The RSX hot-reload system instantly updates your UI when you modify RSX templates, without recompiling or restarting your application.
+
+### What Can Be Hot-Reloaded?
+
+RSX hot-reload works for changes to:
+
+**✅ Hot-Reloadable:**
+- Literal text: `"Hello World"`
+- Component children content
+- Attribute values and reordering
+- Dynamic text segments: `"{class}"`
+- Literal component properties: `value: 123`
+- Template structure shuffling
+
+**❌ Requires Full Rebuild:**
+- Rust code changes outside RSX
+- Component structure changes
+- Control flow logic (`if`, `for`, `match`)
+- Hook definitions
+- Number of `rsx!` macro invocations
+
+### How It Works
+
+#### Conservative Detection
+
+The hot-reload system uses a conservative approach to determine if a change is hot-reloadable:
+
+1. **Parse old and new files** into syntax trees
+2. **Replace all `rsx!` bodies** with empty `rsx! {}`
+3. **Remove doc comments** (they don't affect runtime)
+4. **Compare the modified files**
+5. **If identical** → Only RSX changed → Hot-reload
+6. **If different** → Rust code changed → Full rebuild
+
+```rust
+// Hot-reloadable change:
+rsx! {
+    div { "Hello" }  // Change to "Hello World"
+}
+
+// Requires rebuild:
+let count = use_signal(|| 0);  // Rust code changed
+rsx! { div { "{count}" } }
+```
+
+#### Template Diffing Algorithm
+
+When a change is hot-reloadable, the CLI:
+
+1. **Extracts dynamic pools** from the last build:
+   - Dynamic text segments (`"{variable}"`)
+   - Dynamic nodes (components, loops)
+   - Dynamic attributes
+
+2. **Matches new templates** to old templates using greedy algorithm:
+   - Find candidates with compatible structure
+   - Score by unused dynamic items
+   - Select best match (least waste)
+
+3. **Sends template updates** via WebSocket to the running app
+
+4. **Marks components dirty** for re-render with new templates
+
+This approach maximizes reuse of existing VirtualDOM nodes, avoiding unnecessary allocations.
+
+### Performance
+
+RSX hot-reload is extremely fast:
+
+- **Template parsing**: ~1-5ms
+- **Diff computation**: ~1-10ms
+- **WebSocket transmission**: ~1-5ms
+- **DOM update**: ~1-10ms
+
+**Total: 5-30ms** for typical changes.
+
+### Enabling RSX Hot-Reload
+
+Enabled by default in `dx serve`:
+
+```bash
+dx serve              # Hot-reload enabled
+dx serve --hot-reload # Explicitly enable
+```
+
+Disable for testing:
+
+```bash
+dx serve --hot-reload false
+```
+
+### File Watching
+
+The CLI watches these paths by default (configurable in `Dioxus.toml`):
+
+```toml
+[web.watcher]
+watch_path = ["src", "public"]
+```
+
+Change detection works on:
+- **Linux/macOS**: Native filesystem events (instant)
+- **Windows**: Native filesystem events (instant)
+- **WSL**: Polling (configurable interval)
+
+```bash
+# Adjust WSL polling interval (seconds)
+dx serve --wsl-file-poll-interval 1
+```
+
+## Subsecond Hot-Patching
+
+Subsecond is an experimental system that hot-patches **Rust code changes** without restarting your application.
+
+<Warning>
+Hot-patching is experimental and may cause crashes or unexpected behavior. Use with caution in development.
+</Warning>
+
+### What Is Hot-Patching?
+
+When you modify Rust code (not just RSX), Subsecond:
+
+1. **Recompiles only changed functions** into a patch library
+2. **Loads the patch dylib** into the running process
+3. **Updates the jump table** to redirect calls to new code
+4. **Continues execution** without restart
+
+### Architecture: Jump Table Indirection
+
+Instead of directly calling functions, hot-patchable code uses a jump table:
+
+```rust
+// Normal call
+my_function()
+
+// Hot-patchable call (internal)
+subsecond::call(|| my_function())
+```
+
+The jump table maps function addresses:
+
+```
+┌─────────────┐
+│ Jump Table  │
+├─────────────┤
+│ fn_1 → v2   │  Points to latest version
+│ fn_2 → v1   │
+│ fn_3 → v3   │
+└─────────────┘
+```
+
+When a patch is applied:
+- Original binary remains unchanged
+- Jump table updated with new addresses
+- Next call uses the patched version
+
+### Enabling Hot-Patching
+
+```bash
+dx serve --hot-patch
+```
+
+This enables full Rust code hot-reload in addition to RSX hot-reload.
+
+### How It Works
+
+#### Build Process
+
+**Initial Build (Fat Binary):**
+1. Full compilation with all symbols
+2. Symbol table extraction
+3. Jump table creation
+
+**Patch Build (Thin Binary):**
+1. Detect changed files
+2. Compile only modified functions
+3. Link against cached dependencies
+4. Produce minimal patch dylib
+
+#### Patch Application
+
+1. **CLI sends patch** via WebSocket
+2. **App loads dylib** using `libloading`
+3. **ASLR adjustment** calculates address offsets
+4. **Jump table update** atomically swaps function pointers
+5. **Execution continues** with new code
+
+### ASLR Handling
+
+Operating systems randomize load addresses (ASLR). Subsecond handles this:
+
+```rust
+// Runtime captures actual address of `main`
+let aslr_reference = get_main_address();
+
+// Send to devserver
+send_aslr_reference(aslr_reference);
+
+// Devserver adjusts all addresses
+let offset = runtime_address - compiled_address;
+jump_table[fn_id] = new_address + offset;
+```
+
+### Limitations
+
+**Supported:**
+- Function body changes
+- Adding/removing functions
+- Changing logic and algorithms
+- Global and static variables
+
+**Not Supported:**
+- **Struct layout changes** → Crashes (size/alignment mismatch)
+- **Dependency changes** → Only tip crate patches
+- **Static initializer changes** → Not re-run
+- **Thread-local changes in tip crate** → Reset to initial values
+
+### Platform Support
+
+| Platform | Status |
+|----------|--------|
+| Linux (x86_64, aarch64) | ✅ Supported |
+| macOS (x86_64, aarch64) | ✅ Supported |
+| Windows (x86_64, aarch64) | ✅ Supported |
+| Android (arm64-v8a, armeabi-v7a) | ✅ Supported |
+| iOS Simulator | ✅ Supported |
+| iOS Device | ❌ Not supported (code signing) |
+| WASM32 | ⚠️ Limited (module reloading) |
+
+### Performance
+
+Hot-patching is slower than RSX hot-reload but much faster than full rebuild:
+
+- **Small change**: 100-500ms (single function)
+- **Medium change**: 500ms-2s (multiple functions)
+- **Large change**: 2-5s (many functions)
+
+Compare to full rebuild: 5-30+ seconds for typical projects.
+
+### Debugging Hot-Patching
+
+Enable verbose logging:
+
+```bash
+RUST_LOG=subsecond=debug dx serve --hot-patch
+```
+
+Common issues:
+
+**Crash after patch:**
+- Likely struct layout change
+- Check if you modified struct fields
+- Requires full rebuild
+
+**Patch not applied:**
+- Check WebSocket connection
+- Verify PID matches (multi-process apps)
+- Ensure `--hot-patch` flag is set
+
+**Function still uses old code:**
+- Inlining may have occurred
+- Not all call sites are patched
+- Use `#[inline(never)]` for critical functions
+
+## Development Workflow
+
+### Recommended Setup
+
+For the best development experience:
+
+```bash
+# Web development (fast rebuilds)
+dx serve
+
+# Desktop with hot-patching (experimental)
+dx serve --platform desktop --hot-patch
+
+# Production testing (no hot-reload)
+dx serve --release --hot-reload false
+```
+
+### Interactive Mode
+
+The TUI shows hot-reload status:
+
+```
+Serving: my-app
+Status: ● Hot-reloading (2 templates updated in 12ms)
+
+Logs:
+[12:34:56] Hotreloading: src/components/header.rs
+[12:34:56] Templates: 2 updated, 0 removed
+```
+
+Keyboard shortcuts:
+- **`r`** - Force full rebuild (useful if hot-reload gets confused)
+- **`p`** - Pause/resume automatic rebuilds
+- **`v`** - Toggle verbose logging
+
+### Manual Rebuild Trigger
+
+If hot-reload fails or produces unexpected results, force a full rebuild:
+
+- Press **`r`** in interactive mode
+- Or restart `dx serve`
+
+## DevTools Protocol
+
+### WebSocket Connection
+
+The running app connects to the dev server via WebSocket:
+
+```
+ws://localhost:8080/_dioxus?build_id=123&pid=5678&aslr_reference=0x100000
+```
+
+**Query Parameters:**
+- `build_id` - Identifies the build (for multi-target setups)
+- `pid` - Process ID (for multi-instance filtering)
+- `aslr_reference` - Runtime address of `main` (for patching)
+
+### Message Types
+
+Server → App messages:
+
+```rust
+enum DevserverMsg {
+    HotReload(HotReloadMsg),  // Templates + optional jump table
+    HotPatchStart,            // Binary patching starting
+    FullReloadStart,          // Full rebuild triggered
+    FullReloadFailed,         // Build failed
+    FullReloadCommand,        // Force page reload
+    Shutdown,                 // Dev server stopping
+}
+```
+
+**HotReloadMsg Structure:**
+
+```rust
+struct HotReloadMsg {
+    templates: Vec<Template>,      // Updated RSX templates
+    assets: Vec<PathBuf>,          // Changed asset files
+    ms_elapsed: u64,               // Build time
+    jump_table: Option<JumpTable>, // For hot-patching
+    for_build_id: Option<u64>,     // Target build
+    for_pid: Option<u32>,          // Target process
+}
+```
+
+### Custom Integration
+
+Integrate hot-reload in non-Dioxus apps:
+
+```rust
+use dioxus_devtools::connect_subsecond;
+
+fn main() {
+    connect_subsecond();
+
+    loop {
+        dioxus_devtools::subsecond::call(|| {
+            handle_request()
+        });
+    }
+}
+```
+
+## Troubleshooting
+
+### Hot-Reload Not Working
+
+**Check WebSocket connection:**
+
+```bash
+# Look for connection logs
+RUST_LOG=debug dx serve
+```
+
+Should see:
+```
+WebSocket connection established: build_id=123
+```
+
+**Verify file watching:**
+
+```bash
+# Check watched paths in Dioxus.toml
+[web.watcher]
+watch_path = ["src", "public"]
+```
+
+**WSL users:**
+
+Increase polling frequency:
+
+```bash
+dx serve --wsl-file-poll-interval 1
+```
+
+### Templates Not Updating
+
+1. **Check for Rust code changes** - Hot-reload only works for pure RSX changes
+2. **Force rebuild** - Press `r` in interactive mode
+3. **Restart server** - Sometimes file watcher needs reset
+
+### Hot-Patching Crashes
+
+1. **Struct layout change** - Rebuild required
+2. **Dependency change** - Rebuild required
+3. **Static initializer** - Rebuild required
+
+When in doubt, press **`r`** to force full rebuild.
+
+## Best Practices
+
+### Maximize Hot-Reload Hits
+
+**Do:**
+- Separate UI (RSX) from logic (Rust functions)
+- Keep RSX templates self-contained
+- Use props for dynamic values
+
+**Avoid:**
+- Complex logic inside RSX blocks
+- Conditional compilation in RSX
+- Mixing Rust code changes with RSX changes
+
+### Optimize for Fast Iteration
+
+```rust
+// Good: RSX separate from logic
+fn render_header(title: &str) -> Element {
+    rsx! {
+        header { "{title}" }
+    }
+}
+
+let title = compute_title(); // Logic separate
+render_header(&title)         // Hot-reloadable
+```
+
+```rust
+// Less ideal: Logic mixed with RSX
+rsx! {
+    header { 
+        "{compute_title()}"  // Any change requires rebuild
+    }
+}
+```
+
+### Testing Without Hot-Reload
+
+Before deploying, test without hot-reload to ensure code works correctly:
+
+```bash
+dx serve --release --hot-reload false
+```
+
+Hot-reload can sometimes mask issues that appear in production builds.
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Commands" icon="terminal" href="/cli/commands">
+    Learn about dx serve options
+  </Card>
+  <Card title="Configuration" icon="gear" href="/cli/configuration">
+    Configure file watching
+  </Card>
+</CardGroup>

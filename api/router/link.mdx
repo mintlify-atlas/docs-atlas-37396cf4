@@ -1,0 +1,325 @@
+---
+title: 'Link'
+description: 'Navigate between routes with the Link component'
+---
+
+## Overview
+
+The `Link` component creates navigation links that integrate with the router. Unlike standard HTML anchors, `Link` enables client-side routing without full page reloads.
+
+## Basic Usage
+
+```rust
+use dioxus::prelude::*;
+
+#[derive(Clone, Routable, PartialEq)]
+enum Route {
+    #[route("/")]
+    Home {},
+    #[route("/about")]
+    About {},
+}
+
+#[component]
+fn Home() -> Element {
+    rsx! {
+        Link { to: Route::About {}, "Go to About" }
+    }
+}
+
+#[component]
+fn About() -> Element {
+    rsx! {
+        Link { to: Route::Home {}, "Go to Home" }
+    }
+}
+```
+
+## Props
+
+<ParamField path="to" type="NavigationTarget" required>
+  The target route or URL. Can be a route enum variant or a string path.
+  
+  ```rust
+  // Internal route
+  Link { to: Route::Home {}, "Home" }
+  
+  // String path
+  Link { to: "/about", "About" }
+  
+  // External URL
+  Link { to: "https://dioxuslabs.com", "Dioxus Labs" }
+  ```
+</ParamField>
+
+<ParamField path="children" type="Element" required>
+  The content to render inside the link.
+  
+  ```rust
+  Link { to: Route::Home {},
+      "Home"
+  }
+  
+  // Or with complex content
+  Link { to: Route::About {},
+      img { src: "/icon.png" }
+      span { "About Us" }
+  }
+  ```
+</ParamField>
+
+<ParamField path="active_class" type="Option<String>">
+  CSS class applied when the link's target matches the current route.
+  
+  ```rust
+  Link {
+      to: Route::Home {},
+      active_class: "active",
+      "Home"
+  }
+  ```
+</ParamField>
+
+<ParamField path="class" type="Option<String>">
+  CSS class always applied to the link.
+  
+  ```rust
+  Link {
+      to: Route::About {},
+      class: "nav-link",
+      "About"
+  }
+  ```
+</ParamField>
+
+<ParamField path="new_tab" type="bool" default="false">
+  Open the link in a new tab.
+  
+  ```rust
+  Link {
+      to: "https://dioxuslabs.com",
+      new_tab: true,
+      "Dioxus Labs"
+  }
+  ```
+</ParamField>
+
+<ParamField path="onclick" type="Option<EventHandler<MouseEvent>>">
+  Custom click handler. By default, the handler runs after navigation.
+  
+  ```rust
+  Link {
+      to: Route::Home {},
+      onclick: move |evt| {
+          println!("Link clicked!");
+      },
+      "Home"
+  }
+  ```
+</ParamField>
+
+<ParamField path="onclick_only" type="bool" default="false">
+  When `true`, only the custom `onclick` handler runs (navigation is disabled).
+  
+  ```rust
+  Link {
+      to: Route::Home {},
+      onclick_only: true,
+      onclick: move |_| {
+          println!("Custom action only");
+          // Navigation does NOT occur
+      },
+      "Custom Action"
+  }
+  ```
+</ParamField>
+
+<ParamField path="rel" type="Option<String>">
+  The `rel` attribute for the generated anchor tag.
+  
+  For external links, defaults to `"noopener noreferrer"`.
+  
+  ```rust
+  Link {
+      to: "https://example.com",
+      rel: "nofollow",
+      "External Site"
+  }
+  ```
+</ParamField>
+
+<ParamField path="onmounted" type="Option<EventHandler<MountedEvent>>">
+  Handler called when the anchor element is mounted.
+  
+  ```rust
+  Link {
+      to: Route::Home {},
+      onmounted: move |evt| {
+          println!("Link mounted");
+      },
+      "Home"
+  }
+  ```
+</ParamField>
+
+## Active Links
+
+Links automatically receive an `aria-current="page"` attribute when their target matches the current route. You can style active links using the `active_class` prop:
+
+```rust
+rsx! {
+    style { "
+        .nav-link {{ color: gray; }}
+        .nav-link.active {{ color: blue; font-weight: bold; }}
+    " }
+    
+    nav {
+        Link {
+            to: Route::Home {},
+            class: "nav-link",
+            active_class: "active",
+            "Home"
+        }
+        Link {
+            to: Route::About {},
+            class: "nav-link",
+            active_class: "active",
+            "About"
+        }
+    }
+}
+```
+
+## Navigation Types
+
+### Internal Routes
+
+Internal routes use client-side navigation:
+
+```rust
+Link { to: Route::Home {}, "Home" }
+Link { to: "/about", "About" }
+```
+
+### External URLs
+
+External URLs are detected automatically and use standard browser navigation:
+
+```rust
+Link { to: "https://dioxuslabs.com", "Dioxus" }
+Link { to: "mailto:hello@example.com", "Email Us" }
+```
+
+## HTML Output
+
+The `Link` component renders as an HTML `<a>` tag:
+
+```rust
+Link {
+    to: Route::About {},
+    class: "btn",
+    active_class: "active",
+    id: "about-link",
+    "About"
+}
+```
+
+Generates:
+
+```html
+<a href="/about" class="btn active" aria-current="page" id="about-link">
+    About
+</a>
+```
+
+## Advanced Examples
+
+### Dynamic Routes
+
+```rust
+#[derive(Clone, Routable, PartialEq)]
+enum Route {
+    #[route("/user/:id")]
+    UserProfile { id: usize },
+}
+
+#[component]
+fn UserList() -> Element {
+    let users = vec![1, 2, 3];
+    
+    rsx! {
+        ul {
+            for user_id in users {
+                li {
+                    Link {
+                        to: Route::UserProfile { id: user_id },
+                        "User {user_id}"
+                    }
+                }
+            }
+        }
+    }
+}
+```
+
+### Links with Icons
+
+```rust
+Link {
+    to: Route::Settings {},
+    class: "nav-link",
+    active_class: "active",
+    
+    svg { class: "icon", /* ... */ }
+    span { "Settings" }
+}
+```
+
+### Conditional Navigation
+
+```rust
+#[component]
+fn Home() -> Element {
+    let is_authenticated = use_signal(|| false);
+    
+    rsx! {
+        Link {
+            to: Route::Dashboard {},
+            onclick: move |evt| {
+                if !is_authenticated() {
+                    evt.prevent_default();
+                    // Show login modal instead
+                }
+            },
+            "Dashboard"
+        }
+    }
+}
+```
+
+## Accessibility
+
+- Links automatically receive `aria-current="page"` when active
+- The underlying `<a>` tag is keyboard accessible
+- Screen readers announce links correctly
+- Modifier keys (Cmd/Ctrl + click) work as expected for opening in new tabs
+
+## Important Notes
+
+<Warning>
+  `Link` must be used within a `Router` component. Using it outside a router context will panic in debug builds and render an inactive link in release builds.
+</Warning>
+
+<Info>
+  For external URLs, the router lets the browser handle navigation. The `new_tab` prop has no effect on whether a link is considered active.
+</Info>
+
+## Related
+
+- [Router](/api/router/router) - Router component
+- [Route](/api/router/route) - Define routes
+- [Navigator](/api/router/navigator) - Programmatic navigation
+
+## Source
+
+View the source code: [packages/router/src/components/link.rs](https://github.com/DioxusLabs/dioxus/blob/main/packages/router/src/components/link.rs)

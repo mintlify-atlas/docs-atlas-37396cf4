@@ -1,0 +1,262 @@
+---
+title: 'Route'
+description: 'Define routable types and route structures'
+---
+
+## Overview
+
+The `Routable` trait and `#[derive(Routable)]` macro enable type-safe routing in Dioxus. Routes are defined as enum variants that map to URL patterns.
+
+## Deriving Routable
+
+Use the `#[derive(Routable)]` macro to implement routing for an enum:
+
+```rust
+use dioxus::prelude::*;
+
+#[derive(Clone, Routable, PartialEq, Debug)]
+enum Route {
+    #[route("/")]
+    Home {},
+    
+    #[route("/blog/:id")]
+    BlogPost { id: usize },
+    
+    #[route("/edit?:id")]
+    Edit { id: usize },
+    
+    #[route("/hashtag/#:tag")]
+    Hashtag { tag: String },
+}
+```
+
+## Route Attributes
+
+### `#[route("path")]`
+
+Defines the URL pattern for a route variant.
+
+#### Static Routes
+
+```rust
+#[route("/about")]
+About {},
+```
+
+#### Dynamic Segments
+
+Capture path segments as typed parameters:
+
+```rust
+#[route("/user/:id")]
+User { id: usize },
+```
+
+#### Catch-All Segments
+
+Capture multiple path segments:
+
+```rust
+#[route("/files/:..path")]
+Files { path: Vec<String> },
+```
+
+#### Query Parameters
+
+Parse URL query strings:
+
+```rust
+#[route("/search?:query")]
+Search { query: String },
+
+#[route("/results?:page&:limit")]
+Results { 
+    page: usize,
+    limit: usize,
+},
+```
+
+#### Hash Fragments
+
+Capture URL hash fragments:
+
+```rust
+#[route("/docs/#:section")]
+Docs { section: String },
+```
+
+### `#[nest("prefix")]`
+
+Group routes under a common path prefix:
+
+```rust
+#[derive(Clone, Routable, PartialEq)]
+enum Route {
+    #[nest("/dashboard")]
+        #[route("/")]
+        Dashboard {},
+        
+        #[route("/settings")]
+        Settings {},
+    #[end_nest]
+    
+    #[route("/")]
+    Home {},
+}
+```
+
+### `#[layout(Component)]`
+
+Wrap nested routes in a layout component:
+
+```rust
+#[derive(Clone, Routable, PartialEq)]
+enum Route {
+    #[nest("/admin")]
+        #[layout(AdminLayout)]
+            #[route("/")]
+            AdminHome {},
+            
+            #[route("/users")]
+            AdminUsers {},
+        #[end_layout]
+    #[end_nest]
+    
+    #[route("/")]
+    Home {},
+}
+
+#[component]
+fn AdminLayout() -> Element {
+    rsx! {
+        div { class: "admin-layout",
+            nav { "Admin Menu" }
+            Outlet::<Route> {}
+        }
+    }
+}
+```
+
+## Route Components
+
+Each route variant must have a corresponding component with the same name:
+
+```rust
+#[derive(Clone, Routable, PartialEq)]
+enum Route {
+    #[route("/user/:id")]
+    User { id: usize },
+}
+
+// Component must match the route variant name
+#[component]
+fn User(id: usize) -> Element {
+    rsx! {
+        h1 { "User {id}" }
+    }
+}
+```
+
+Route parameters are automatically passed as component props.
+
+## Type Requirements
+
+### Path Segments
+
+Types used in path segments must implement:
+- `FromStr` - Parse from URL string
+- `Display` - Format back to URL string
+- `Default` - Provide fallback if parsing fails
+
+```rust
+#[derive(Default, Clone, PartialEq, Debug)]
+struct UserId(usize);
+
+impl std::str::FromStr for UserId {
+    type Err = std::num::ParseIntError;
+    
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        Ok(UserId(s.parse()?))
+    }
+}
+
+impl std::fmt::Display for UserId {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+```
+
+### Query Parameters
+
+Query parameters must implement:
+- `FromStr` + `Default` for single parameters
+- `From<&str>` for spread queries (`?:..query`)
+
+### Catch-All Segments
+
+Catch-all segments must implement:
+- `FromIterator<String>` - Collect from segments
+- `ToRouteSegments` - Format back to path
+
+## Routable Trait
+
+The `Routable` trait is automatically implemented by the derive macro. It provides:
+
+### Methods
+
+<ParamField path="render" type="fn(&self, level: usize) -> Element">
+  Render the route at the given nesting level.
+</ParamField>
+
+<ParamField path="is_child_of" type="fn(&self, other: &Self) -> bool">
+  Check if this route is a child of another route.
+</ParamField>
+
+<ParamField path="parent" type="fn(&self) -> Option<Self>">
+  Get the parent route, if any.
+</ParamField>
+
+<ParamField path="static_routes" type="fn() -> Vec<Self>">
+  Get all static routes (routes without dynamic segments).
+</ParamField>
+
+### Usage Example
+
+```rust
+let route = Route::BlogPost { id: 42 };
+let parent = route.parent(); // Returns Route::BlogList
+
+let blog_list = Route::BlogList {};
+let blog_post = Route::BlogPost { id: 1 };
+assert!(blog_post.is_child_of(&blog_list));
+
+let static_routes = Route::static_routes();
+// Returns all routes without parameters
+```
+
+## Conversion Traits
+
+Routes implement `FromStr` and `Display` for URL conversion:
+
+```rust
+use std::str::FromStr;
+
+// Parse from URL string
+let route = Route::from_str("/blog/42").unwrap();
+assert_eq!(route, Route::BlogPost { id: 42 });
+
+// Convert to URL string
+let url = Route::BlogPost { id: 42 }.to_string();
+assert_eq!(url, "/blog/42");
+```
+
+## Related
+
+- [Router](/api/router/router) - Router component
+- [Link](/api/router/link) - Navigate between routes
+- [Navigator](/api/router/navigator) - Programmatic navigation
+
+## Source
+
+View the source code: [packages/router/src/routable.rs](https://github.com/DioxusLabs/dioxus/blob/main/packages/router/src/routable.rs)

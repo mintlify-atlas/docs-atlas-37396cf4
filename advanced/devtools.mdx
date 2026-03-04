@@ -1,0 +1,432 @@
+---
+title: Developer Tools
+description: Integrate with Dioxus developer tools and debugging utilities
+---
+
+Dioxus provides a comprehensive devtools system for hot-reloading, debugging, and inspecting your application during development.
+
+## DevTools Protocol
+
+The Dioxus CLI runs a WebSocket server that communicates with your running application. This enables hot-reload, code patching, and debugging features.
+
+### Connecting to DevServer
+
+```rust
+use dioxus_devtools::connect;
+
+fn main() {
+    // Connect to devserver and handle messages
+    connect(|msg| {
+        match msg {
+            DevserverMsg::HotReload(hot_reload) => {
+                println!("Hot reload: {} templates updated", hot_reload.templates.len());
+            }
+            DevserverMsg::Shutdown => {
+                println!("Devserver shutting down");
+            }
+        }
+    });
+    
+    // Your app code...
+}
+```
+
+**Location**: `packages/devtools/src/lib.rs:60-111`
+
+### Message Types
+
+The devtools protocol supports several message types:
+
+```rust
+pub enum DevserverMsg {
+    /// Hot reload message with template updates
+    HotReload(HotReloadMsg),
+    
+    /// Server is shutting down
+    Shutdown,
+}
+
+pub struct HotReloadMsg {
+    /// Updated RSX templates
+    pub templates: Vec<HotReloadedTemplate>,
+    
+    /// Jump table for code patching (Subsecond)
+    pub jump_table: Option<Vec<JumpTableEntry>>,
+    
+    /// Target build ID
+    pub for_build_id: Option<u64>,
+    
+    /// Target process ID
+    pub for_pid: Option<u32>,
+}
+```
+
+## Hot Reload Integration
+
+Dioxus supports two types of hot-reloading:
+
+### 1. RSX Template Hot Reload
+
+Updates UI templates without restarting the app:
+
+```rust
+use dioxus_devtools::{apply_changes, HotReloadMsg};
+
+fn handle_hot_reload(dom: &VirtualDom, msg: &HotReloadMsg) {
+    // Apply template changes to the VirtualDOM
+    apply_changes(dom, msg);
+    
+    // The VirtualDOM will automatically re-render affected components
+}
+```
+
+This works by updating the signals that back each RSX template. When a template changes:
+
+1. Template is parsed and compiled
+2. Signal with matching file/line/column is found
+3. Signal value is updated with new template
+4. Components using that template automatically re-render
+
+**Reference**: `packages/devtools/src/lib.rs:9-14`
+
+### 2. Subsecond Code Patching
+
+Patches Rust code changes at runtime using jump table indirection:
+
+```rust
+use dioxus_devtools::connect_subsecond;
+
+fn main() {
+    // Automatically handles code patches
+    connect_subsecond();
+    
+    // Your app continues running with hot-patched code
+}
+```
+
+Subsecond works by:
+- Compiling only changed functions to a dynamic library
+- Loading the library at runtime
+- Updating a global jump table to redirect calls to new code
+
+**Reference**: `packages/devtools/src/lib.rs:75-86`
+
+## Debugging Tools
+
+### Inspecting the VirtualDOM
+
+Access VirtualDOM state for debugging:
+
+```rust
+use dioxus::prelude::*;
+
+fn debug_component() -> Element {
+    let dom = use_hook(|| VirtualDom::new(inner_app));
+    
+    // Inspect scopes
+    if let Some(scope) = dom.get_scope(ScopeId(1)) {
+        println!("Scope height: {}", scope.height());
+        println!("Scope name: {}", scope.name());
+    }
+    
+    rsx! { "Debug info logged" }
+}
+```
+
+**Reference**: `packages/core/src/virtual_dom.rs:333-345`
+
+### Scope Inspection
+
+Inspect component scope state:
+
+```rust
+use dioxus::prelude::*;
+
+#[component]
+fn DebuggableComponent() -> Element {
+    let count = use_signal(|| 0);
+    
+    // Access scope for debugging
+    let scope = use_hook(|| current_scope_id());
+    
+    use_effect(move || {
+        println!("Component rendered with count: {}", count());
+    });
+    
+    rsx! {
+        button { 
+            onclick: move |_| count += 1,
+            "Count: {count}"
+        }
+    }
+}
+```
+
+### Tracing Integration
+
+Dioxus uses the `tracing` crate for structured logging:
+
+```rust
+use tracing::{info, debug, trace};
+use tracing_subscriber;
+
+fn main() {
+    // Enable tracing
+    tracing_subscriber::fmt()
+        .with_max_level(tracing::Level::DEBUG)
+        .init();
+    
+    // VirtualDOM operations are automatically traced
+    let mut dom = VirtualDom::new(app);
+    dom.rebuild_in_place();  // Emits trace events
+}
+```
+
+VirtualDOM emits trace events for:
+- Scope creation and destruction
+- Re-renders and diffs
+- Task polling
+- Event handling
+
+**Reference**: `packages/core/src/virtual_dom.rs:307-331`
+
+## Performance Profiling
+
+### Render Time Tracking
+
+Measure component render times:
+
+```rust
+use std::time::Instant;
+use dioxus::prelude::*;
+
+#[component]
+fn ProfiledComponent() -> Element {
+    let render_count = use_signal(|| 0);
+    
+    use_effect(move || {
+        let start = Instant::now();
+        render_count += 1;
+        let duration = start.elapsed();
+        println!("Render #{}: {:?}", render_count(), duration);
+    });
+    
+    rsx! { "Profiled component" }
+}
+```
+
+### Memory Profiling
+
+Track memory usage:
+
+```rust
+use dioxus::prelude::*;
+
+fn profile_memory() {
+    let dom = VirtualDom::new(app);
+    
+    // Count scopes
+    let scope_count = dom.scopes.len();
+    println!("Active scopes: {}", scope_count);
+    
+    // Inspect runtime state
+    let runtime = dom.runtime();
+    let task_count = runtime.tasks.borrow().len();
+    println!("Active tasks: {}", task_count);
+}
+```
+
+## Custom DevTools Integration
+
+### Building a Custom DevTool
+
+Create custom debugging tools for your app:
+
+```rust
+use dioxus::prelude::*;
+use dioxus_devtools::DevserverMsg;
+
+#[derive(Clone)]
+struct DevToolsState {
+    connected: Signal<bool>,
+    messages: Signal<Vec<String>>,
+}
+
+#[component]
+fn DevToolsPanel() -> Element {
+    let state = use_context::<DevToolsState>();
+    
+    rsx! {
+        div { class: "devtools-panel",
+            h2 { "DevTools" }
+            
+            if state.connected() {
+                div { "Connected to devserver" }
+            } else {
+                div { "Disconnected" }
+            }
+            
+            div { class: "messages",
+                for msg in state.messages() {
+                    div { "{msg}" }
+                }
+            }
+        }
+    }
+}
+```
+
+### Intercepting Hot Reload Events
+
+```rust
+use dioxus_devtools::{connect_at, DevserverMsg};
+
+fn custom_devtools_handler() {
+    let endpoint = "ws://localhost:8080/_dioxus".to_string();
+    
+    connect_at(endpoint, |msg| {
+        match msg {
+            DevserverMsg::HotReload(reload_msg) => {
+                // Custom handling
+                log::info!("Hot reload: {} files changed", reload_msg.templates.len());
+                
+                // Show notification
+                show_notification("Code updated!");
+            }
+            DevserverMsg::Shutdown => {
+                log::warn!("Devserver disconnected");
+            }
+        }
+    });
+}
+```
+
+**Reference**: `packages/devtools/src/lib.rs:88-111`
+
+## Subsecond Hot-Patching
+
+### Using Subsecond in Your App
+
+For non-Dioxus apps that want hot-patching:
+
+```rust
+use dioxus_devtools::serve_subsecond;
+
+#[tokio::main]
+async fn main() {
+    serve_subsecond(app_main).await;
+}
+
+async fn app_main() {
+    // Your application logic
+    // Changes to this function will be hot-patched
+    println!("App running!");
+    
+    loop {
+        // Your event loop
+        tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
+    }
+}
+```
+
+**Reference**: `packages/devtools/src/lib.rs:141-148`
+
+### With Arguments
+
+Pass arguments to hot-patched functions:
+
+```rust
+use dioxus_devtools::serve_subsecond_with_args;
+
+#[tokio::main]
+async fn main() {
+    let config = AppConfig { port: 3000 };
+    serve_subsecond_with_args(config, app_main).await;
+}
+
+async fn app_main(config: AppConfig) {
+    println!("Starting server on port {}", config.port);
+    // Implementation...
+}
+```
+
+**Reference**: `packages/devtools/src/lib.rs:176-220`
+
+## WebSocket Protocol Details
+
+The devserver WebSocket protocol:
+
+### Connection
+
+```
+ws://localhost:8080/_dioxus?aslr_reference={ref}&build_id={id}&pid={pid}
+```
+
+Query parameters:
+- `aslr_reference`: Memory address offset for ASLR
+- `build_id`: Build identifier for version matching
+- `pid`: Process ID for targeting specific instances
+
+### Message Format
+
+Messages are JSON-encoded:
+
+```json
+{
+  "HotReload": {
+    "templates": [
+      {
+        "key": {
+          "file": "src/app.rs",
+          "line": 10,
+          "column": 5,
+          "index": 0
+        },
+        "template": { /* VNode data */ }
+      }
+    ],
+    "jump_table": null,
+    "for_build_id": 12345,
+    "for_pid": 67890
+  }
+}
+```
+
+## Best Practices
+
+1. **Disable in Production**: Devtools should only run in development builds
+2. **Error Handling**: Handle devserver disconnections gracefully
+3. **Security**: Never expose devtools WebSocket to the internet
+4. **Logging**: Use structured logging (tracing) for debugging
+5. **Hot Reload Limits**: Not all code changes can be hot-reloaded (see Subsecond limitations)
+
+## Troubleshooting
+
+### Hot Reload Not Working
+
+```rust
+// Check if connected to devserver
+let endpoint = dioxus_cli_config::devserver_ws_endpoint();
+if endpoint.is_none() {
+    eprintln!("Not running under dx serve");
+}
+```
+
+### Code Patches Failing
+
+```rust
+use subsecond::PatchError;
+
+let result = unsafe { subsecond::apply_patch(jump_table) };
+match result {
+    Ok(_) => println!("Patch applied successfully"),
+    Err(PatchError::LoadError(e)) => eprintln!("Failed to load patch: {}", e),
+    Err(PatchError::SymbolError(e)) => eprintln!("Symbol error: {}", e),
+}
+```
+
+## Additional Resources
+
+- Subsecond architecture: `/notes/architecture/07-HOTRELOAD.md`
+- DevTools types: `packages/devtools-types/src/lib.rs`
+- CLI implementation: `packages/cli/src/`

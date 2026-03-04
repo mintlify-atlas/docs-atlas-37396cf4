@@ -1,0 +1,265 @@
+---
+title: HTML Elements
+description: Learn about HTML elements available in Dioxus and how to use them in your UI
+---
+
+Dioxus provides access to all standard HTML5 elements through the `rsx!` macro. Elements form the building blocks of your user interface.
+
+## Basic Elements
+
+Elements are created using their tag name followed by braces containing attributes and children:
+
+```rust
+use dioxus::prelude::*;
+
+fn app() -> Element {
+    rsx! {
+        div {
+            h1 { "Hello, Dioxus!" }
+            p { "This is a paragraph." }
+        }
+    }
+}
+```
+
+## Element Structure
+
+Elements in RSX follow this structure:
+
+```rust
+element_name {
+    // Attributes come first
+    class: "my-class",
+    id: "my-id",
+    
+    // Then children elements
+    child_element {}
+    "text content"
+}
+```
+
+## Common HTML Elements
+
+### Content Sectioning
+
+```rust
+rsx! {
+    header { "Page header" }
+    nav { "Navigation" }
+    main {
+        article { "Main content" }
+        aside { "Sidebar" }
+    }
+    footer { "Page footer" }
+}
+```
+
+### Text Content
+
+```rust
+rsx! {
+    // Headings
+    h1 { "Heading 1" }
+    h2 { "Heading 2" }
+    h3 { "Heading 3" }
+    
+    // Paragraphs and text formatting
+    p { "A paragraph of text" }
+    div {
+        b { "Bold text" }
+        i { "Italic text" }
+        strong { "Important text" }
+        em { "Emphasized text" }
+    }
+    
+    // Lists
+    ul {
+        li { "List item 1" }
+        li { "List item 2" }
+    }
+    
+    ol {
+        li { "First" }
+        li { "Second" }
+    }
+}
+```
+
+### Forms and Input
+
+```rust
+rsx! {
+    form {
+        label { "Name:" }
+        input { r#type: "text", placeholder: "Enter your name" }
+        
+        label { "Email:" }
+        input { r#type: "email", placeholder: "you@example.com" }
+        
+        button { r#type: "submit", "Submit" }
+    }
+}
+```
+
+### Media Elements
+
+```rust
+rsx! {
+    // Images
+    img { src: "/path/to/image.png", alt: "Description" }
+    
+    // Video
+    video {
+        src: "/path/to/video.mp4",
+        controls: true,
+    }
+    
+    // Audio
+    audio {
+        src: "/path/to/audio.mp3",
+        controls: true,
+    }
+}
+```
+
+## Element Attributes
+
+Attributes are specified with a colon syntax:
+
+```rust
+rsx! {
+    div {
+        // String attributes
+        class: "container",
+        id: "main",
+        
+        // Boolean attributes
+        disabled: true,
+        hidden: false,
+        
+        // Numeric attributes
+        width: 100,
+        height: 50,
+    }
+}
+```
+
+### Attribute Shorthand
+
+If you have a variable with the same name as the attribute, you can use shorthand:
+
+```rust
+let disabled = true;
+let class = "btn btn-primary";
+
+rsx! {
+    button {
+        disabled,    // Same as disabled: disabled
+        class,       // Same as class: class
+        "Click me"
+    }
+}
+```
+
+## Custom Attributes
+
+For custom or data attributes, use string literals:
+
+```rust
+rsx! {
+    div {
+        "data-id": "123",
+        "data-name": "example",
+        "aria-label": "Description",
+    }
+}
+```
+
+## SVG Elements
+
+SVG elements are supported with proper namespacing:
+
+```rust
+rsx! {
+    svg {
+        view_box: "-1000 -1000 2000 2000",
+        width: "400",
+        height: "400",
+        
+        rect {
+            x: -1000,
+            y: -1000,
+            width: 2000,
+            height: 2000,
+            fill: "#aaa",
+        }
+        
+        circle {
+            cx: 0,
+            cy: 0,
+            r: 200,
+            fill: "#333",
+        }
+    }
+}
+```
+
+<Note>
+SVG elements automatically use the correct namespace (`http://www.w3.org/2000/svg`). You don't need to specify it manually.
+</Note>
+
+## Special Elements
+
+### Fragment
+
+Use `Fragment` to group elements without a wrapper:
+
+```rust
+rsx! {
+    Fragment {
+        div { "First" }
+        div { "Second" }
+    }
+}
+```
+
+### Dangerous Inner HTML
+
+For inserting raw HTML (use with caution):
+
+```rust
+rsx! {
+    div {
+        dangerous_inner_html: "<p>Raw HTML content</p>"
+    }
+}
+```
+
+<Warning>
+Be extremely careful with `dangerous_inner_html` as it can expose your app to XSS attacks. Only use it with trusted content.
+</Warning>
+
+## Element Reference
+
+Dioxus supports all standard HTML5 elements. For a complete list, see the [HTML element reference on MDN](https://developer.mozilla.org/en-US/docs/Web/HTML/Element).
+
+Common categories include:
+
+- **Document metadata**: `head`, `title`, `meta`, `link`, `style`
+- **Content sectioning**: `header`, `nav`, `main`, `article`, `section`, `aside`, `footer`
+- **Text content**: `div`, `p`, `blockquote`, `ul`, `ol`, `li`, `dl`, `dt`, `dd`
+- **Inline text**: `a`, `span`, `strong`, `em`, `b`, `i`, `code`, `mark`
+- **Forms**: `form`, `input`, `button`, `label`, `select`, `option`, `textarea`
+- **Tables**: `table`, `thead`, `tbody`, `tr`, `th`, `td`
+- **Media**: `img`, `video`, `audio`, `canvas`, `svg`
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Styling" icon="paintbrush" href="./styling">
+    Learn how to style your elements
+  </Card>
+  <Card title="Events" icon="bolt" href="./events">
+    Handle user interactions
+  </Card>
+</CardGroup>

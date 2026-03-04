@@ -1,0 +1,472 @@
+---
+title: Configuration
+description: Complete guide to configuring Dioxus applications with Dioxus.toml
+---
+
+Dioxus projects are configured through a `Dioxus.toml` file at the project root. This file controls build behavior, asset handling, platform-specific settings, and development server options.
+
+## Creating Configuration
+
+Generate a complete `Dioxus.toml` with all available fields:
+
+```bash
+dx config init my-project
+```
+
+For a minimal setup, create manually:
+
+```toml
+[application]
+name = "my-project"
+
+[web.app]
+title = "My App"
+```
+
+The CLI will prompt for any missing required fields.
+
+## Application Settings
+
+Core application configuration:
+
+```toml
+[application]
+# Application name (required)
+name = "my-app"
+
+# Output directory for builds (default: "dist")
+out_dir = "dist"
+
+# Directory for static files copied verbatim (optional)
+public_dir = "public"
+
+# Tailwind input file (auto-detected if not specified)
+tailwind_input = "input.css"
+
+# Tailwind output file (auto-detected if not specified)
+tailwind_output = "assets/tailwind.css"
+
+# Asset directory for manganis assets (optional)
+asset_dir = "assets"
+```
+
+### Field Details
+
+**`name`** (required)
+The application identifier. Used for bundle identifiers, executable names, and configuration.
+
+**`out_dir`**
+Where `dx build` and `dx serve` place compiled output. Relative to project root.
+
+**`public_dir`**
+Static files copied verbatim into the output directory. Useful for:
+- Favicon files
+- `robots.txt`
+- Static images not processed by `asset!()`
+- Pre-built JavaScript libraries
+
+**`tailwind_input`** / **`tailwind_output`**
+The CLI auto-detects Tailwind based on:
+- `tailwind.config.js` / `tailwind.config.ts` → Tailwind v3
+- `tailwind.css` → Tailwind v4
+
+Manual configuration overrides auto-detection.
+
+## Web Configuration
+
+Settings specific to web (WASM) builds:
+
+```toml
+[web.app]
+# HTML <title> tag content
+title = "My Dioxus App"
+
+# Base path for routing (e.g., "/app" for GitHub Pages)
+base_path = "/"
+
+[web.watcher]
+# Reload HTML when watcher triggers
+reload_html = true
+
+# Paths to watch for changes
+watch_path = ["src", "public", "assets"]
+
+[web.resource]
+# Additional <script> and <style> tags in production HTML
+
+# Development resources (only in dx serve)
+[web.resource.dev]
+script = [
+  { src = "https://cdn.example.com/analytics.js" }
+]
+style = [
+  { href = "https://fonts.googleapis.com/css?family=Inter" }
+]
+
+# Production resources (dx build --release)
+script = [
+  { src = "/assets/tracking.js", defer = true }
+]
+style = [
+  { href = "/assets/custom.css" }
+]
+
+[web.https]
+# Enable HTTPS for development server
+enabled = true
+
+# Use mkcert for local certificates (auto-installs)
+mkcert = true
+
+# Or provide custom certificate paths
+key_path = "./certs/key.pem"
+cert_path = "./certs/cert.pem"
+
+[web.wasm_opt]
+# Optimization level: "z", "s", "0", "1", "2", "3", "4"
+# z = aggressive size, s = size, 0 = none, 1-4 = speed
+level = "z"
+
+# Keep debug symbols in WASM
+debug = false
+
+# Keep function names for stack traces
+keep_names = false
+
+# Enable memory packing optimization
+memory_packing = false
+
+# Extra wasm-opt flags
+extra_features = ["--enable-simd"]
+
+# Pre-compress assets with gzip/brotli in release builds
+pre_compress = true
+```
+
+### Development Proxy
+
+Proxy API requests during development to avoid CORS issues:
+
+```toml
+[[web.proxy]]
+# Requests to /api/* are proxied to backend server
+backend = "http://localhost:8000/api/"
+```
+
+Multiple proxies are supported:
+
+```toml
+[[web.proxy]]
+backend = "http://localhost:8000/api/"
+
+[[web.proxy]]
+backend = "http://localhost:9000/auth/"
+```
+
+### WASM Optimization Levels
+
+| Level | Focus | Use Case |
+|-------|-------|----------|
+| `z` | Aggressive size | Production (default) |
+| `s` | Size | Production, bandwidth-constrained |
+| `0` | None | Development debugging |
+| `1` | Speed | Performance-critical apps |
+| `2` | More speed | Games, real-time apps |
+| `3` | Even more speed | Maximum performance |
+| `4` | Aggressive speed | Benchmarking |
+
+## Bundle Configuration
+
+Platform-agnostic bundling settings:
+
+```toml
+[bundle]
+# Base bundle identifier (reverse domain notation)
+identifier = "com.example.myapp"
+
+# Application publisher/author
+publisher = "My Company"
+
+# App icon paths (platform-specific formats)
+icon = [
+  "assets/icon.png",      # Fallback
+  "assets/icon.icns",     # macOS
+  "assets/icon.ico",      # Windows
+]
+
+# Application version
+version = "1.0.0"
+
+# Copyright notice
+copyright = "Copyright © 2024 My Company"
+
+# App category (platform-specific values)
+category = "DeveloperTool"
+
+# Short description
+short_description = "A Dioxus application"
+
+# Long description
+long_description = "A cross-platform application built with Dioxus."
+```
+
+## Platform-Specific Configuration
+
+Override settings for individual platforms:
+
+### iOS Configuration
+
+```toml
+[ios]
+# Override bundle identifier for iOS
+identifier = "com.example.myapp.ios"
+
+# Custom Info.plist file
+info_plist = "ios/Info.plist"
+
+# Entitlements file
+entitlements = "ios/entitlements.plist"
+
+# iOS deployment target
+deployment_target = "13.0"
+```
+
+### Android Configuration
+
+```toml
+[android]
+# Override bundle identifier
+identifier = "com.example.myapp.android"
+
+# Custom AndroidManifest.xml
+manifest = "android/AndroidManifest.xml"
+
+# Main activity class
+main_activity = "MainActivity"
+
+# Minimum SDK version
+min_sdk_version = 24
+```
+
+### macOS Configuration
+
+```toml
+[macos]
+identifier = "com.example.myapp.macos"
+info_plist = "macos/Info.plist"
+entitlements = "macos/entitlements.plist"
+```
+
+### Windows Configuration
+
+```toml
+[windows]
+identifier = "com.example.myapp.windows"
+```
+
+### Linux Configuration
+
+```toml
+[linux]
+identifier = "com.example.myapp.linux"
+```
+
+## Permissions
+
+Unified permissions that map to platform-specific manifests:
+
+```toml
+[permissions]
+# Request camera access
+camera = true
+
+# Request microphone access
+microphone = true
+
+# Request location access
+location = true
+
+# Request notification permissions
+notifications = true
+
+# Request file system access
+file_system = true
+```
+
+These automatically generate:
+- **iOS**: `Info.plist` usage descriptions
+- **Android**: `AndroidManifest.xml` permissions
+- **macOS**: Entitlements and `Info.plist` keys
+
+## Deep Links
+
+Unified deep linking configuration:
+
+```toml
+[deep_links]
+# Custom URL schemes
+schemes = ["myapp"]
+
+# Universal links (iOS) / App Links (Android)
+domains = ["example.com", "app.example.com"]
+```
+
+Maps to:
+- **iOS**: Associated Domains entitlement + `apple-app-site-association`
+- **Android**: Intent filters in `AndroidManifest.xml`
+
+## Background Modes
+
+Enable background execution capabilities:
+
+```toml
+[background]
+# iOS/macOS background modes
+modes = ["audio", "location", "fetch"]
+```
+
+Available modes:
+- `audio` - Background audio playback
+- `location` - Location updates
+- `fetch` - Background fetch
+- `remote-notification` - Push notifications
+
+## Components
+
+Configuration for the component registry:
+
+```toml
+[components]
+# Enable component registry
+enabled = true
+
+# Custom registry URL
+registry = "https://components.dioxuslabs.com"
+```
+
+## Complete Example
+
+A production-ready configuration:
+
+```toml
+[application]
+name = "my-app"
+out_dir = "dist"
+public_dir = "public"
+asset_dir = "assets"
+
+[bundle]
+identifier = "com.example.myapp"
+publisher = "Example Inc."
+version = "1.0.0"
+icon = ["assets/icon.png", "assets/icon.icns", "assets/icon.ico"]
+category = "Productivity"
+short_description = "An amazing productivity app"
+long_description = "A cross-platform productivity application built with Dioxus."
+
+[web.app]
+title = "My App"
+base_path = "/"
+
+[web.watcher]
+reload_html = true
+watch_path = ["src", "public", "assets"]
+
+[[web.proxy]]
+backend = "http://localhost:8000/api/"
+
+[web.resource.dev]
+script = [
+  { src = "https://cdn.jsdelivr.net/npm/chart.js" }
+]
+
+[web.wasm_opt]
+level = "z"
+keep_names = false
+pre_compress = true
+
+[permissions]
+notifications = true
+file_system = true
+
+[deep_links]
+schemes = ["myapp"]
+domains = ["app.example.com"]
+
+[ios]
+deployment_target = "14.0"
+
+[android]
+min_sdk_version = 26
+```
+
+## Environment-Specific Configuration
+
+While `Dioxus.toml` doesn't support environment-specific sections directly, you can:
+
+1. **Use Cargo features** for conditional compilation
+2. **Override at build time** via CLI flags:
+
+```bash
+# Override platform
+dx build --platform web
+
+# Override features
+dx build --features "production,analytics"
+
+# Override target
+dx build --target wasm32-unknown-unknown
+```
+
+3. **Use multiple config files** with environment variables:
+
+```bash
+# Custom build script
+if [ "$ENV" = "production" ]; then
+  cp Dioxus.prod.toml Dioxus.toml
+fi
+dx build --release
+```
+
+## Configuration Precedence
+
+Settings are resolved in this order (highest priority first):
+
+1. CLI arguments (`dx serve --port 3000`)
+2. `Dioxus.toml` configuration
+3. CLI defaults
+
+## Validation
+
+The CLI validates configuration on every command. Common errors:
+
+**Missing required fields:**
+```
+Error: Missing required field 'application.name'
+```
+
+**Invalid values:**
+```
+Error: Invalid wasm_opt level 'invalid'. Must be: z, s, 0, 1, 2, 3, 4
+```
+
+## Schema Reference
+
+The CLI includes a JSON schema for editor autocompletion:
+
+```bash
+dx config show --schema > dioxus-schema.json
+```
+
+Configure your editor to use this schema for `Dioxus.toml` files.
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Commands" icon="terminal" href="/cli/commands">
+    Explore CLI commands
+  </Card>
+  <Card title="Bundling" icon="box" href="/cli/bundling">
+    Learn about production bundling
+  </Card>
+</CardGroup>

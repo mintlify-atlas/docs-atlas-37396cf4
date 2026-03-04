@@ -1,0 +1,252 @@
+---
+title: Fullstack Overview
+description: Build full-stack Rust applications with Dioxus - server functions, SSR, and seamless client-server communication
+---
+
+Dioxus Fullstack enables you to build complete web applications in Rust, with seamless integration between client and server code. Write your entire application in a single codebase and call server functions as if they were local functions.
+
+## What is Dioxus Fullstack?
+
+Dioxus Fullstack bridges the gap between client and server, providing:
+
+- **Server Functions**: Call server-side code from the client with automatic serialization
+- **Server-Side Rendering (SSR)**: Pre-render your UI on the server for faster initial loads and better SEO
+- **Hydration**: Seamlessly take over server-rendered HTML on the client
+- **Unified Codebase**: Share types, validation logic, and business logic between client and server
+- **Type Safety**: Full type checking across the client-server boundary
+
+## Architecture
+
+Dioxus Fullstack applications consist of two main parts:
+
+```rust
+use dioxus::prelude::*;
+
+fn main() {
+    // Automatically launches the right platform:
+    // - Server: Axum web server with SSR
+    // - Client: WASM app that hydrates server HTML
+    dioxus::launch(app);
+}
+
+fn app() -> Element {
+    let mut count = use_signal(|| 0);
+    let mut server_data = use_action(get_server_data);
+
+    rsx! {
+        h1 { "Fullstack App" }
+        // Client-side reactivity
+        button { onclick: move |_| count += 1, "Count: {count}" }
+        // Server function call
+        button { onclick: move |_| server_data.call(), "Fetch Data" }
+        p { "{server_data.value():?}" }
+    }
+}
+
+// Runs only on the server
+#[get("/api/data")]
+async fn get_server_data() -> Result<String> {
+    Ok("Data from server".to_string())
+}
+```
+
+### Server Side
+
+- **Axum Integration**: Built on the battle-tested Axum web framework
+- **Automatic Routing**: Server functions are automatically registered as HTTP endpoints
+- **SSR Rendering**: Components render to HTML on the server
+- **Hydration Data Injection**: Server state is serialized and embedded in the HTML
+
+### Client Side
+
+- **WASM Application**: Compiled to WebAssembly for browser execution
+- **Automatic Hydration**: Picks up where the server left off
+- **RPC-style Calls**: Server functions appear as async Rust functions
+- **Type-Safe Communication**: Same types on client and server
+
+## When to Use Fullstack
+
+Dioxus Fullstack is ideal for:
+
+**✅ Web Applications**
+- Dashboard and admin panels
+- Content management systems
+- E-commerce sites
+- Social platforms
+
+**✅ SEO-Critical Sites**
+- Marketing pages
+- Blogs and documentation
+- Landing pages
+
+**✅ Real-Time Applications**
+- Chat applications
+- Collaborative tools
+- Live dashboards
+
+**✅ Progressive Enhancement**
+- Server-rendered base experience
+- Enhanced interactivity on capable devices
+
+## When NOT to Use Fullstack
+
+Consider alternatives if:
+
+- **Desktop/Mobile Apps**: Use `dioxus::launch` without server features for pure desktop/mobile apps
+- **Static Sites**: Use SSG (Static Site Generation) if content rarely changes
+- **Microservices**: If you need separate deployment of frontend and backend
+- **Non-Rust Backend**: If your backend must be in another language, use the `web` renderer with a separate API
+
+## Key Features
+
+### Unified Development Experience
+
+```rust
+// Define your data types once
+#[derive(Serialize, Deserialize, Clone)]
+struct User {
+    id: u32,
+    name: String,
+    email: String,
+}
+
+// Use them on the server
+#[get("/api/users/{id}")]
+async fn get_user(id: u32) -> Result<User> {
+    // Database logic here
+    Ok(User { id, name: "Alice".into(), email: "alice@example.com".into() })
+}
+
+// And on the client
+fn user_profile(id: u32) -> Element {
+    let mut user = use_action(move || get_user(id));
+    
+    use_effect(move || user.call());
+    
+    rsx! {
+        match user.value() {
+            Some(Ok(user)) => rsx! { 
+                h1 { "{user.name}" }
+                p { "{user.email}" }
+            },
+            Some(Err(e)) => rsx! { "Error: {e}" },
+            None => rsx! { "Loading..." }
+        }
+    }
+}
+```
+
+### Automatic Code Splitting
+
+Code marked with `#[server]` is automatically excluded from the client bundle:
+
+```rust
+#[get("/api/secrets")]
+async fn get_secrets() -> Result<String> {
+    // This code never ships to the client
+    let api_key = std::env::var("API_KEY")?;
+    let response = reqwest::get(format!("https://api.example.com?key={api_key}")).await?;
+    Ok(response.text().await?)
+}
+```
+
+### Cross-Platform Server Functions
+
+Server functions work from any Dioxus platform:
+
+```rust
+#[get("/api/save")]
+async fn save_data(data: String) -> Result<()> {
+    // Save to database
+    Ok(())
+}
+
+// Works from web, desktop, mobile!
+fn my_component() -> Element {
+    let mut save = use_action(|| save_data("test".into()));
+    
+    rsx! {
+        button { onclick: move |_| save.call(), "Save" }
+    }
+}
+```
+
+From web, this makes an HTTP request. From desktop/mobile, it uses the best available HTTP client for the platform.
+
+## Getting Started
+
+Create a new fullstack project:
+
+```bash
+dx new my-app --template fullstack
+cd my-app
+```
+
+Run the development server:
+
+```bash
+dx serve --platform web
+```
+
+This starts:
+- Axum server on `http://localhost:8080`
+- Hot-reload dev server
+- Automatic rebuilds on file changes
+
+## Project Structure
+
+```
+my-app/
+├── src/
+│   └── main.rs          # Your app code
+├── Cargo.toml           # Dependencies
+├── Dioxus.toml          # Dioxus configuration
+└── public/              # Static assets
+```
+
+A typical `Cargo.toml`:
+
+```toml
+[dependencies]
+dioxus = { version = "0.7", features = ["web", "fullstack"] }
+serde = { version = "1.0", features = ["derive"] }
+
+[features]
+default = []
+server = ["dioxus/server"]
+```
+
+## Development Workflow
+
+1. **Write Components**: Create your UI in `rsx!`
+2. **Add Server Functions**: Mark async functions with `#[server]` or `#[get]`/`#[post]`
+3. **Call from Client**: Use `use_action` to call server functions
+4. **Test Locally**: `dx serve` runs everything locally
+5. **Deploy**: Build and deploy to any Rust-compatible host
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Server Functions" icon="server" href="/fullstack/server-functions">
+    Learn how to define and call server functions
+  </Card>
+  <Card title="Server-Side Rendering" icon="code" href="/fullstack/ssr">
+    Understand SSR and how to configure it
+  </Card>
+  <Card title="Hydration" icon="droplet" href="/fullstack/hydration">
+    Deep dive into the hydration process
+  </Card>
+  <Card title="Middleware" icon="layer-group" href="/fullstack/middleware">
+    Add authentication, logging, and custom middleware
+  </Card>
+</CardGroup>
+
+## Examples
+
+Check out the fullstack examples in the Dioxus repository:
+
+- `examples/07-fullstack/fullstack_hello_world.rs` - Basic server function usage
+- `examples/07-fullstack/server_functions.rs` - Advanced patterns
+- `examples/07-fullstack/middleware.rs` - Adding middleware
+- `examples/07-fullstack/server_state.rs` - Managing server state
+- `examples/07-fullstack/streaming.rs` - Streaming responses

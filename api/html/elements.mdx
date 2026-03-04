@@ -1,0 +1,1016 @@
+---
+title: HTML Elements
+description: Complete reference of all HTML elements available in Dioxus
+---
+
+Dioxus provides a comprehensive set of HTML elements that can be used with the `rsx!` macro. All elements are type-safe and come with comprehensive documentation.
+
+## Document Metadata
+
+### base
+
+The `<base>` element specifies the base URL to use for all relative URLs in a document.
+
+```rust
+rsx! {
+    base { href: "https://example.com/", target: "_blank" }
+}
+```
+
+**Attributes:** `href`, `target`
+
+**Reference:** [MDN](https://developer.mozilla.org/en-US/docs/Web/HTML/Element/base)
+
+### head
+
+The `<head>` element contains machine-readable information (metadata) about the document.
+
+```rust
+rsx! {
+    head {
+        title { "My App" }
+        meta { charset: "utf-8" }
+    }
+}
+```
+
+**Reference:** [MDN](https://developer.mozilla.org/en-US/docs/Web/HTML/Element/head)
+
+### link
+
+The `<link>` element specifies relationships between the current document and an external resource.
+
+```rust
+rsx! {
+    link { 
+        rel: "stylesheet", 
+        href: "/styles.css",
+        r#type: "text/css"
+    }
+}
+```
+
+**Attributes:** `href`, `rel`, `type`, `crossorigin`, `hreflang`, `media`, `sizes`, `title`, `integrity`, `disabled`, `referrerpolicy`, `fetchpriority`, `blocking`, `as`
+
+**Reference:** [MDN](https://developer.mozilla.org/en-US/docs/Web/HTML/Element/link)
+
+### meta
+
+The `<meta>` element represents metadata that cannot be represented by other HTML meta-related elements.
+
+```rust
+rsx! {
+    meta { charset: "utf-8" }
+    meta { name: "viewport", content: "width=device-width, initial-scale=1" }
+    meta { property: "og:title", content: "My App" }
+}
+```
+
+**Attributes:** `charset`, `content`, `http_equiv`, `name`, `property`
+
+**Reference:** [MDN](https://developer.mozilla.org/en-US/docs/Web/HTML/Element/meta)
+
+### style
+
+The `<style>` element contains style information for a document.
+
+```rust
+rsx! {
+    style { r#type: "text/css", ".my-class {{ color: red; }}" }
+}
+```
+
+**Attributes:** `type`, `media`, `nonce`, `title`
+
+**Reference:** [MDN](https://developer.mozilla.org/en-US/docs/Web/HTML/Element/style)
+
+### title
+
+The `<title>` element defines the document's title shown in the browser's title bar or page tab.
+
+```rust
+rsx! {
+    title { "My Page Title" }
+}
+```
+
+**Reference:** [MDN](https://developer.mozilla.org/en-US/docs/Web/HTML/Element/title)
+
+## Sectioning Root
+
+### body
+
+The `<body>` element represents the content of an HTML document.
+
+```rust
+rsx! {
+    body {
+        h1 { "Welcome" }
+        p { "Content here" }
+    }
+}
+```
+
+**Reference:** [MDN](https://developer.mozilla.org/en-US/docs/Web/HTML/Element/body)
+
+## Content Sectioning
+
+### address
+
+The `<address>` element indicates contact information for a person or organization.
+
+```rust
+rsx! {
+    address {
+        "Contact us at: "
+        a { href: "mailto:email@example.com", "email@example.com" }
+    }
+}
+```
+
+**Reference:** [MDN](https://developer.mozilla.org/en-US/docs/Web/HTML/Element/address)
+
+### article
+
+The `<article>` element represents a self-contained composition in a document.
+
+```rust
+rsx! {
+    article {
+        h2 { "Article Title" }
+        p { "Article content..." }
+    }
+}
+```
+
+**Reference:** [MDN](https://developer.mozilla.org/en-US/docs/Web/HTML/Element/article)
+
+### aside
+
+The `<aside>` element represents content tangentially related to the content around it.
+
+```rust
+rsx! {
+    aside {
+        h3 { "Related Links" }
+        ul { li { "Link 1" } }
+    }
+}
+```
+
+**Reference:** [MDN](https://developer.mozilla.org/en-US/docs/Web/HTML/Element/aside)
+
+### footer
+
+The `<footer>` element represents a footer for its nearest sectioning content or root element.
+
+```rust
+rsx! {
+    footer {
+        p { "© 2024 My Company" }
+    }
+}
+```
+
+**Reference:** [MDN](https://developer.mozilla.org/en-US/docs/Web/HTML/Element/footer)
+
+### header
+
+The `<header>` element represents introductory content, typically a group of introductory or navigational aids.
+
+```rust
+rsx! {
+    header {
+        h1 { "Site Title" }
+        nav { /* navigation */ }
+    }
+}
+```
+
+**Reference:** [MDN](https://developer.mozilla.org/en-US/docs/Web/HTML/Element/header)
+
+### h1, h2, h3, h4, h5, h6
+
+The heading elements represent six levels of section headings.
+
+```rust
+rsx! {
+    h1 { "Main Heading" }
+    h2 { "Subheading" }
+    h3 { "Sub-subheading" }
+}
+```
+
+**Reference:** [MDN - h1](https://developer.mozilla.org/en-US/docs/Web/HTML/Element/h1)
+
+### main
+
+The `<main>` element represents the dominant content of the document body.
+
+```rust
+rsx! {
+    main {
+        article { "Main content" }
+    }
+}
+```
+
+**Reference:** [MDN](https://developer.mozilla.org/en-US/docs/Web/HTML/Element/main)
+
+### nav
+
+The `<nav>` element represents a section of navigation links.
+
+```rust
+rsx! {
+    nav {
+        a { href: "/home", "Home" }
+        a { href: "/about", "About" }
+    }
+}
+```
+
+**Reference:** [MDN](https://developer.mozilla.org/en-US/docs/Web/HTML/Element/nav)
+
+### section
+
+The `<section>` element represents a generic standalone section of a document.
+
+```rust
+rsx! {
+    section {
+        h2 { "Section Title" }
+        p { "Section content" }
+    }
+}
+```
+
+**Reference:** [MDN](https://developer.mozilla.org/en-US/docs/Web/HTML/Element/section)
+
+## Text Content
+
+### blockquote
+
+The `<blockquote>` element indicates that the enclosed text is an extended quotation.
+
+```rust
+rsx! {
+    blockquote { cite: "https://example.com", "Quote text" }
+}
+```
+
+**Attributes:** `cite`
+
+**Reference:** [MDN](https://developer.mozilla.org/en-US/docs/Web/HTML/Element/blockquote)
+
+### div
+
+The `<div>` element is a generic container for flow content.
+
+```rust
+rsx! {
+    div { class: "container",
+        p { "Content inside div" }
+    }
+}
+```
+
+**Reference:** [MDN](https://developer.mozilla.org/en-US/docs/Web/HTML/Element/div)
+
+### dl, dt, dd
+
+Description list elements for term-description pairs.
+
+```rust
+rsx! {
+    dl {
+        dt { "Term" }
+        dd { "Definition" }
+    }
+}
+```
+
+**Reference:** [MDN - dl](https://developer.mozilla.org/en-US/docs/Web/HTML/Element/dl)
+
+### figcaption
+
+The `<figcaption>` element represents a caption or legend for a figure.
+
+```rust
+rsx! {
+    figure {
+        img { src: "/image.jpg" }
+        figcaption { "Image caption" }
+    }
+}
+```
+
+**Reference:** [MDN](https://developer.mozilla.org/en-US/docs/Web/HTML/Element/figcaption)
+
+### figure
+
+The `<figure>` element represents self-contained content, potentially with an optional caption.
+
+**Reference:** [MDN](https://developer.mozilla.org/en-US/docs/Web/HTML/Element/figure)
+
+### hr
+
+The `<hr>` element represents a thematic break between content.
+
+```rust
+rsx! {
+    p { "Section 1" }
+    hr {}
+    p { "Section 2" }
+}
+```
+
+**Reference:** [MDN](https://developer.mozilla.org/en-US/docs/Web/HTML/Element/hr)
+
+### li
+
+The `<li>` element represents an item in a list.
+
+```rust
+rsx! {
+    ul {
+        li { "Item 1" }
+        li { "Item 2" }
+    }
+}
+```
+
+**Attributes:** `value` (for ordered lists)
+
+**Reference:** [MDN](https://developer.mozilla.org/en-US/docs/Web/HTML/Element/li)
+
+### ol
+
+The `<ol>` element represents an ordered list of items.
+
+```rust
+rsx! {
+    ol { reversed: true, start: 10,
+        li { "First" }
+        li { "Second" }
+    }
+}
+```
+
+**Attributes:** `reversed`, `start`, `type`
+
+**Reference:** [MDN](https://developer.mozilla.org/en-US/docs/Web/HTML/Element/ol)
+
+### p
+
+The `<p>` element represents a paragraph.
+
+```rust
+rsx! {
+    p { "This is a paragraph." }
+}
+```
+
+**Reference:** [MDN](https://developer.mozilla.org/en-US/docs/Web/HTML/Element/p)
+
+### pre
+
+The `<pre>` element represents preformatted text.
+
+```rust
+rsx! {
+    pre { "Preformatted\n  text" }
+}
+```
+
+**Reference:** [MDN](https://developer.mozilla.org/en-US/docs/Web/HTML/Element/pre)
+
+### ul
+
+The `<ul>` element represents an unordered list of items.
+
+```rust
+rsx! {
+    ul {
+        li { "Item 1" }
+        li { "Item 2" }
+    }
+}
+```
+
+**Reference:** [MDN](https://developer.mozilla.org/en-US/docs/Web/HTML/Element/ul)
+
+## Inline Text Semantics
+
+### a
+
+The `<a>` element creates a hyperlink.
+
+```rust
+rsx! {
+    a { href: "https://example.com", target: "_blank", "Link text" }
+}
+```
+
+**Attributes:** `download`, `href`, `hreflang`, `target`, `type`, `ping`, `rel`
+
+**Reference:** [MDN](https://developer.mozilla.org/en-US/docs/Web/HTML/Element/a)
+
+### abbr
+
+The `<abbr>` element represents an abbreviation or acronym.
+
+```rust
+rsx! {
+    abbr { title: "HyperText Markup Language", "HTML" }
+}
+```
+
+**Reference:** [MDN](https://developer.mozilla.org/en-US/docs/Web/HTML/Element/abbr)
+
+### b
+
+The `<b>` element draws attention to text without indicating extra importance.
+
+```rust
+rsx! {
+    b { "Bold text" }
+}
+```
+
+**Reference:** [MDN](https://developer.mozilla.org/en-US/docs/Web/HTML/Element/b)
+
+### br
+
+The `<br>` element produces a line break.
+
+```rust
+rsx! {
+    p {
+        "Line 1"
+        br {}
+        "Line 2"
+    }
+}
+```
+
+**Reference:** [MDN](https://developer.mozilla.org/en-US/docs/Web/HTML/Element/br)
+
+### code
+
+The `<code>` element displays text as computer code.
+
+```rust
+rsx! {
+    code { "let x = 42;" }
+}
+```
+
+**Attributes:** `language`
+
+**Reference:** [MDN](https://developer.mozilla.org/en-US/docs/Web/HTML/Element/code)
+
+### em
+
+The `<em>` element marks text with stress emphasis.
+
+```rust
+rsx! {
+    em { "Emphasized text" }
+}
+```
+
+**Reference:** [MDN](https://developer.mozilla.org/en-US/docs/Web/HTML/Element/em)
+
+### i
+
+The `<i>` element represents text in an alternate voice or mood.
+
+```rust
+rsx! {
+    i { "Italic text" }
+}
+```
+
+**Reference:** [MDN](https://developer.mozilla.org/en-US/docs/Web/HTML/Element/i)
+
+### kbd
+
+The `<kbd>` element represents keyboard input.
+
+```rust
+rsx! {
+    kbd { "Ctrl" } "+" kbd { "C" }
+}
+```
+
+**Reference:** [MDN](https://developer.mozilla.org/en-US/docs/Web/HTML/Element/kbd)
+
+### mark
+
+The `<mark>` element represents highlighted text.
+
+```rust
+rsx! {
+    mark { "Highlighted text" }
+}
+```
+
+**Reference:** [MDN](https://developer.mozilla.org/en-US/docs/Web/HTML/Element/mark)
+
+### small
+
+The `<small>` element represents side comments and fine print.
+
+```rust
+rsx! {
+    small { "Fine print" }
+}
+```
+
+**Reference:** [MDN](https://developer.mozilla.org/en-US/docs/Web/HTML/Element/small)
+
+### span
+
+The `<span>` element is a generic inline container.
+
+```rust
+rsx! {
+    span { class: "highlight", "Highlighted" }
+}
+```
+
+**Reference:** [MDN](https://developer.mozilla.org/en-US/docs/Web/HTML/Element/span)
+
+### strong
+
+The `<strong>` element indicates strong importance.
+
+```rust
+rsx! {
+    strong { "Important text" }
+}
+```
+
+**Reference:** [MDN](https://developer.mozilla.org/en-US/docs/Web/HTML/Element/strong)
+
+### time
+
+The `<time>` element represents a specific period in time.
+
+```rust
+rsx! {
+    time { datetime: "2024-03-04", "March 4, 2024" }
+}
+```
+
+**Attributes:** `datetime`
+
+**Reference:** [MDN](https://developer.mozilla.org/en-US/docs/Web/HTML/Element/time)
+
+## Image and Multimedia
+
+### audio
+
+The `<audio>` element embeds sound content.
+
+```rust
+rsx! {
+    audio { controls: true, src: "/audio.mp3" }
+}
+```
+
+**Attributes:** `autoplay`, `controls`, `crossorigin`, `muted`, `preload`, `src`, `loop`
+
+**Reference:** [MDN](https://developer.mozilla.org/en-US/docs/Web/HTML/Element/audio)
+
+### img
+
+The `<img>` element embeds an image.
+
+```rust
+rsx! {
+    img { 
+        src: "/image.jpg", 
+        alt: "Description",
+        width: 300,
+        height: 200
+    }
+}
+```
+
+**Attributes:** `alt`, `crossorigin`, `decoding`, `height`, `ismap`, `loading`, `src`, `srcset`, `usemap`, `width`, `referrerpolicy`, `sizes`, `fetchpriority`
+
+**Reference:** [MDN](https://developer.mozilla.org/en-US/docs/Web/HTML/Element/img)
+
+### video
+
+The `<video>` element embeds video content.
+
+```rust
+rsx! {
+    video { 
+        controls: true,
+        width: 640,
+        height: 360,
+        src: "/video.mp4"
+    }
+}
+```
+
+**Attributes:** `autoplay`, `controls`, `crossorigin`, `height`, `loop`, `muted`, `preload`, `playsinline`, `poster`, `src`, `width`
+
+**Reference:** [MDN](https://developer.mozilla.org/en-US/docs/Web/HTML/Element/video)
+
+## Embedded Content
+
+### iframe
+
+The `<iframe>` element embeds another HTML page.
+
+```rust
+rsx! {
+    iframe { 
+        src: "https://example.com",
+        width: 800,
+        height: 600,
+        allow: "fullscreen"
+    }
+}
+```
+
+**Attributes:** `allow`, `allowfullscreen`, `allowpaymentrequest`, `height`, `name`, `referrerpolicy`, `src`, `srcdoc`, `width`
+
+**Reference:** [MDN](https://developer.mozilla.org/en-US/docs/Web/HTML/Element/iframe)
+
+## Scripting
+
+### canvas
+
+The `<canvas>` element provides a drawing surface.
+
+```rust
+rsx! {
+    canvas { width: 800, height: 600 }
+}
+```
+
+**Attributes:** `width`, `height`
+
+**Reference:** [MDN](https://developer.mozilla.org/en-US/docs/Web/HTML/Element/canvas)
+
+### script
+
+The `<script>` element embeds executable code.
+
+```rust
+rsx! {
+    script { src: "/script.js", r#async: true }
+}
+```
+
+**Attributes:** `src`, `type`, `async`, `defer`, `crossorigin`, `integrity`, `nomodule`, `nonce`, `referrerpolicy`, `fetchpriority`
+
+**Reference:** [MDN](https://developer.mozilla.org/en-US/docs/Web/HTML/Element/script)
+
+## Table Content
+
+### table
+
+The `<table>` element represents tabular data.
+
+```rust
+rsx! {
+    table {
+        thead {
+            tr {
+                th { "Header 1" }
+                th { "Header 2" }
+            }
+        }
+        tbody {
+            tr {
+                td { "Cell 1" }
+                td { "Cell 2" }
+            }
+        }
+    }
+}
+```
+
+**Reference:** [MDN](https://developer.mozilla.org/en-US/docs/Web/HTML/Element/table)
+
+### thead, tbody, tfoot
+
+Table section elements for header, body, and footer.
+
+**Reference:** [MDN - thead](https://developer.mozilla.org/en-US/docs/Web/HTML/Element/thead)
+
+### tr
+
+The `<tr>` element defines a row of table cells.
+
+**Reference:** [MDN](https://developer.mozilla.org/en-US/docs/Web/HTML/Element/tr)
+
+### th
+
+The `<th>` element defines a header cell in a table.
+
+```rust
+rsx! {
+    th { scope: "col", "Header" }
+}
+```
+
+**Attributes:** `abbr`, `colspan`, `rowspan`, `scope`
+
+**Reference:** [MDN](https://developer.mozilla.org/en-US/docs/Web/HTML/Element/th)
+
+### td
+
+The `<td>` element defines a data cell in a table.
+
+```rust
+rsx! {
+    td { colspan: 2, "Cell content" }
+}
+```
+
+**Attributes:** `colspan`, `rowspan`
+
+**Reference:** [MDN](https://developer.mozilla.org/en-US/docs/Web/HTML/Element/td)
+
+## Forms
+
+### form
+
+The `<form>` element represents a document section containing interactive controls.
+
+```rust
+rsx! {
+    form { 
+        action: "/submit",
+        method: "post",
+        input { r#type: "text", name: "username" }
+        button { r#type: "submit", "Submit" }
+    }
+}
+```
+
+**Attributes:** `action`, `autocomplete`, `enctype`, `method`, `name`, `novalidate`, `target`
+
+**Reference:** [MDN](https://developer.mozilla.org/en-US/docs/Web/HTML/Element/form)
+
+### button
+
+The `<button>` element represents a clickable button.
+
+```rust
+rsx! {
+    button { 
+        r#type: "button",
+        onclick: |_| println!("Clicked!"),
+        "Click me"
+    }
+}
+```
+
+**Attributes:** `autofocus`, `disabled`, `form`, `formaction`, `formenctype`, `formmethod`, `formnovalidate`, `formtarget`, `name`, `type`, `value`
+
+**Reference:** [MDN](https://developer.mozilla.org/en-US/docs/Web/HTML/Element/button)
+
+### input
+
+The `<input>` element creates interactive controls for forms.
+
+```rust
+rsx! {
+    input {
+        r#type: "text",
+        name: "username",
+        placeholder: "Enter username",
+        value: "{username}",
+        oninput: move |e| username.set(e.value())
+    }
+}
+```
+
+**Attributes:** `accept`, `alt`, `autocomplete`, `autofocus`, `capture`, `checked`, `disabled`, `form`, `height`, `list`, `max`, `maxlength`, `min`, `minlength`, `multiple`, `name`, `pattern`, `placeholder`, `readonly`, `required`, `size`, `src`, `step`, `type`, `value`, `width`
+
+**Input Types:** `button`, `checkbox`, `color`, `date`, `datetime-local`, `email`, `file`, `hidden`, `image`, `month`, `number`, `password`, `radio`, `range`, `reset`, `search`, `submit`, `tel`, `text`, `time`, `url`, `week`
+
+**Reference:** [MDN](https://developer.mozilla.org/en-US/docs/Web/HTML/Element/input)
+
+### label
+
+The `<label>` element represents a caption for a form control.
+
+```rust
+rsx! {
+    label { r#for: "username", "Username:" }
+    input { id: "username", r#type: "text" }
+}
+```
+
+**Attributes:** `for`, `form`
+
+**Reference:** [MDN](https://developer.mozilla.org/en-US/docs/Web/HTML/Element/label)
+
+### select
+
+The `<select>` element represents a control for selecting among options.
+
+```rust
+rsx! {
+    select { 
+        name: "choice",
+        onchange: move |e| selection.set(e.value()),
+        option { value: "1", "Option 1" }
+        option { value: "2", "Option 2" }
+    }
+}
+```
+
+**Attributes:** `autocomplete`, `autofocus`, `disabled`, `form`, `multiple`, `name`, `required`, `size`, `value`
+
+**Reference:** [MDN](https://developer.mozilla.org/en-US/docs/Web/HTML/Element/select)
+
+### option
+
+The `<option>` element represents an option in a select element.
+
+```rust
+rsx! {
+    option { value: "1", selected: true, "Choice 1" }
+}
+```
+
+**Attributes:** `disabled`, `label`, `selected`, `value`
+
+**Reference:** [MDN](https://developer.mozilla.org/en-US/docs/Web/HTML/Element/option)
+
+### textarea
+
+The `<textarea>` element represents a multi-line plain text editing control.
+
+```rust
+rsx! {
+    textarea {
+        name: "message",
+        rows: 5,
+        cols: 40,
+        placeholder: "Enter your message",
+        value: "{message}",
+        oninput: move |e| message.set(e.value())
+    }
+}
+```
+
+**Attributes:** `autocomplete`, `autofocus`, `cols`, `disabled`, `form`, `maxlength`, `minlength`, `name`, `placeholder`, `readonly`, `required`, `rows`, `spellcheck`, `wrap`, `value`
+
+**Reference:** [MDN](https://developer.mozilla.org/en-US/docs/Web/HTML/Element/textarea)
+
+### fieldset
+
+The `<fieldset>` element groups related form controls.
+
+```rust
+rsx! {
+    fieldset {
+        legend { "Personal Information" }
+        input { r#type: "text", name: "name" }
+    }
+}
+```
+
+**Attributes:** `disabled`, `form`, `name`
+
+**Reference:** [MDN](https://developer.mozilla.org/en-US/docs/Web/HTML/Element/fieldset)
+
+### legend
+
+The `<legend>` element represents a caption for a fieldset.
+
+**Reference:** [MDN](https://developer.mozilla.org/en-US/docs/Web/HTML/Element/legend)
+
+### progress
+
+The `<progress>` element displays a progress indicator.
+
+```rust
+rsx! {
+    progress { value: 70, max: 100 }
+}
+```
+
+**Attributes:** `max`, `value`
+
+**Reference:** [MDN](https://developer.mozilla.org/en-US/docs/Web/HTML/Element/progress)
+
+## Interactive Elements
+
+### details
+
+The `<details>` element creates a disclosure widget.
+
+```rust
+rsx! {
+    details { open: true,
+        summary { "Click to expand" }
+        p { "Hidden content" }
+    }
+}
+```
+
+**Attributes:** `open`
+
+**Reference:** [MDN](https://developer.mozilla.org/en-US/docs/Web/HTML/Element/details)
+
+### summary
+
+The `<summary>` element specifies a summary for a details element.
+
+**Reference:** [MDN](https://developer.mozilla.org/en-US/docs/Web/HTML/Element/summary)
+
+### dialog
+
+The `<dialog>` element represents a dialog box or modal.
+
+```rust
+rsx! {
+    dialog { open: true,
+        p { "This is a dialog" }
+        button { "Close" }
+    }
+}
+```
+
+**Attributes:** `open`
+
+**Reference:** [MDN](https://developer.mozilla.org/en-US/docs/Web/HTML/Element/dialog)
+
+## Web Components
+
+### slot
+
+The `<slot>` element is a placeholder in a web component.
+
+```rust
+rsx! {
+    slot { name: "content" }
+}
+```
+
+**Attributes:** `name`
+
+**Reference:** [MDN](https://developer.mozilla.org/en-US/docs/Web/HTML/Element/slot)
+
+### template
+
+The `<template>` element holds HTML that should not be rendered immediately.
+
+**Reference:** [MDN](https://developer.mozilla.org/en-US/docs/Web/HTML/Element/template)
+
+## SVG
+
+### svg
+
+The `<svg>` element is a container for SVG graphics.
+
+```rust
+rsx! {
+    svg { 
+        width: "100",
+        height: "100",
+        circle { cx: "50", cy: "50", r: "40", fill: "red" }
+    }
+}
+```
+
+**Reference:** [MDN](https://developer.mozilla.org/en-US/docs/Web/SVG/Element/svg)
+
+For more SVG elements like `circle`, `rect`, `path`, etc., see the SVG specification.
+
+## Element Usage
+
+All elements follow the same pattern in `rsx!`:
+
+```rust
+rsx! {
+    element_name {
+        // Attributes first
+        attribute_name: "value",
+        another_attribute: true,
+        
+        // Then children
+        "Text content"
+        child_element {}
+    }
+}
+```
+
+## See Also
+
+- [HTML Attributes](/api/html/attributes) - Complete list of HTML attributes
+- [Event Handlers](/api/html/events) - Available event handlers for HTML elements
+- [RSX Syntax](/guide/rsx) - Learn more about the RSX macro syntax

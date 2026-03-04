@@ -1,0 +1,323 @@
+---
+title: use_effect
+description: Run side effects with automatic dependency tracking
+---
+
+Effects allow you to run side effects when reactive values change. They automatically track which signals they read and rerun when those signals update.
+
+## Basic Usage
+
+```rust
+use dioxus::prelude::*;
+
+fn Logger() -> Element {
+    let count = use_signal(|| 0);
+    
+    // Effect runs on mount and whenever count changes
+    use_effect(move || {
+        println!("Count is now: {count}");
+    });
+    
+    rsx! {
+        button { onclick: move |_| count += 1, "Increment" }
+    }
+}
+```
+
+## Function Signature
+
+```rust
+fn use_effect(callback: impl FnMut() + 'static) -> Effect
+```
+
+Creates an effect that runs:
+1. Immediately on component mount
+2. Whenever any signal read inside the effect changes
+3. During or after the component rerenders (as needed)
+
+## Automatic Dependencies
+
+Effects automatically track signal dependencies:
+
+```rust
+let count = use_signal(|| 0);
+let name = use_signal(|| "Alice".to_string());
+
+use_effect(move || {
+    // This effect tracks both count and name
+    println!("Hello {name}, count: {count}");
+});
+
+// This effect only tracks count
+use_effect(move || {
+    println!("Count: {count}");
+});
+```
+
+## Effect Execution Model
+
+### When Effects Run
+
+```rust
+fn App() -> Element {
+    let mut count = use_signal(|| 0);
+    
+    use_effect(move || {
+        println!("Effect ran");
+    });
+    
+    // Effect runs:
+    // 1. On first render (mount)
+    // 2. After count changes and component rerenders
+    
+    rsx! {
+        button { onclick: move |_| count += 1, "Click" }
+    }
+}
+```
+
+### Effects Without Component Rerender
+
+Effects can run even when the component doesn't rerender:
+
+```rust
+fn App() -> Element {
+    let mut count = use_signal(|| 0);
+    
+    use_effect(move || {
+        // This effect tracks count
+        println!("Count: {count}");
+    });
+    
+    use_future(move || async move {
+        loop {
+            tokio::time::sleep(Duration::from_secs(1)).await;
+            // Effect reruns even though App doesn't rerender
+            count += 1;
+        }
+    });
+    
+    // This component never reads count, so it never rerenders
+    rsx! { "Background counter running" }
+}
+```
+
+## Common Use Cases
+
+### Logging and Debugging
+
+```rust
+let state = use_signal(|| MyState::default());
+
+use_effect(move || {
+    println!("State changed: {:?}", *state.read());
+});
+```
+
+### Side Effects
+
+```rust
+let theme = use_signal(|| Theme::Light);
+
+use_effect(move || {
+    // Update document class when theme changes
+    let class = match theme() {
+        Theme::Light => "light",
+        Theme::Dark => "dark",
+    };
+    
+    web_sys::window()
+        .unwrap()
+        .document()
+        .unwrap()
+        .body()
+        .unwrap()
+        .set_class_name(class);
+});
+```
+
+### Synchronizing with External Systems
+
+```rust
+let is_online = use_signal(|| true);
+
+use_effect(move || {
+    let status = if is_online() { "online" } else { "offline" };
+    
+    // Sync to localStorage
+    web_sys::window()
+        .and_then(|w| w.local_storage().ok().flatten())
+        .map(|storage| storage.set_item("status", status));
+});
+```
+
+### Validation
+
+```rust
+let email = use_signal(|| String::new());
+let mut is_valid = use_signal(|| false);
+
+use_effect(move || {
+    let current_email = email();
+    is_valid.set(current_email.contains('@'));
+});
+```
+
+## Effect Handle
+
+The `Effect` handle allows manual control:
+
+```rust
+let mut effect = use_effect(move || {
+    println!("Effect ran");
+});
+
+// Manually mark the effect as dirty to rerun it
+effect.mark_dirty();
+```
+
+## Avoiding Infinite Loops
+
+Be careful when reading and writing the same signal:
+
+```rust
+// ❌ BAD: Infinite loop!
+let mut count = use_signal(|| 0);
+
+use_effect(move || {
+    let value = count();  // Read subscribes the effect
+    count += 1;           // Write triggers the effect -> infinite loop!
+});
+
+// ✅ GOOD: Use peek to read without subscribing
+let mut count = use_signal(|| 0);
+
+use_effect(move || {
+    let value = *count.peek();  // Peek doesn't subscribe
+    count += 1;                 // Safe to write
+});
+
+// ✅ GOOD: Only read OR write, not both
+let count = use_signal(|| 0);
+
+use_effect(move || {
+    println!("Count: {count}");  // Only reading, no writes
+});
+```
+
+## Effects vs use_future
+
+### use_effect
+
+- Synchronous
+- Reruns automatically when dependencies change
+- For side effects and synchronization
+
+```rust
+use_effect(move || {
+    println!("Sync operation");
+});
+```
+
+### use_future
+
+- Asynchronous
+- Returns a value via `use_resource` or runs indefinitely
+- For async operations like fetching data
+
+```rust
+use_future(move || async move {
+    let data = fetch_data().await;
+    println!("Async operation complete");
+});
+```
+
+## Multiple Effects
+
+You can use multiple effects in one component:
+
+```rust
+let count = use_signal(|| 0);
+let name = use_signal(|| String::new());
+
+// Effect 1: Logs count changes
+use_effect(move || {
+    println!("Count: {count}");
+});
+
+// Effect 2: Logs name changes
+use_effect(move || {
+    println!("Name: {name}");
+});
+
+// Effect 3: Logs both
+use_effect(move || {
+    println!("Count: {count}, Name: {name}");
+});
+```
+
+## Cleanup
+
+Effects don't have explicit cleanup. For cleanup behavior, use spawned tasks:
+
+```rust
+let enabled = use_signal(|| true);
+
+use_future(move || async move {
+    if enabled() {
+        let task = spawn(async {
+            // Background work
+        });
+        
+        // Wait for enabled to change
+        // Then cancel the task
+    }
+});
+```
+
+For component cleanup, use `use_on_destroy`:
+
+```rust
+use_on_destroy(move || {
+    println!("Component is being destroyed");
+});
+```
+
+## Performance Considerations
+
+- Effects are deduplicated - if triggered multiple times in the same tick, they run once
+- Effects run after rendering, not during
+- Minimize work in effects - they can impact responsiveness
+- Consider debouncing fast-changing signals:
+
+```rust
+let search = use_signal(|| String::new());
+let mut debounced_search = use_signal(|| String::new());
+
+use_future(move || async move {
+    loop {
+        // Wait for search to change
+        let current = search();
+        
+        // Debounce for 300ms
+        tokio::time::sleep(Duration::from_millis(300)).await;
+        
+        // Only update if search hasn't changed again
+        if search() == current {
+            debounced_search.set(current);
+        }
+    }
+});
+
+use_effect(move || {
+    // Only runs after user stops typing for 300ms
+    println!("Search: {debounced_search}");
+});
+```
+
+## Related
+
+- [use_signal](/state/use-signal) - Create reactive state
+- [use_memo](/hooks/use-memo) - Compute derived values
+- [use_future](/hooks/use-future) - Run async operations
+- [use_on_destroy](/hooks/use-on-destroy) - Cleanup on unmount

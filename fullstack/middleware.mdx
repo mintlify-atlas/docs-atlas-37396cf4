@@ -1,0 +1,520 @@
+---
+title: Middleware
+description: Add authentication, logging, rate limiting, and custom middleware to your fullstack Dioxus application
+---
+
+Middleware allows you to intercept and modify HTTP requests and responses in your Dioxus fullstack application. Use middleware for authentication, logging, rate limiting, CORS, and more.
+
+## Overview
+
+Dioxus fullstack is built on [Axum](https://docs.rs/axum), giving you access to the full Tower middleware ecosystem. You can apply middleware:
+
+1. **Per-route** - Using the `#[middleware]` attribute on server functions
+2. **Router-level** - Using Axum's `.layer()` method on the router
+3. **Custom extractors** - Creating reusable extractors for common patterns
+
+## Per-Route Middleware
+
+Apply middleware to specific server functions using the `#[middleware]` attribute:
+
+```rust
+use dioxus::prelude::*;
+use tower_http::timeout::TimeoutLayer;
+use std::time::Duration;
+
+#[get("/api/data")]
+#[middleware(TimeoutLayer::new(Duration::from_secs(30)))]
+async fn get_data() -> Result<String> {
+    // This endpoint times out after 30 seconds
+    slow_operation().await
+}
+```
+
+### Multiple Middleware Layers
+
+Stack multiple middleware by adding multiple attributes:
+
+```rust
+use tower_http::compression::CompressionLayer;
+
+#[get("/api/large-data")]
+#[middleware(TimeoutLayer::new(Duration::from_secs(60)))]
+#[middleware(CompressionLayer::new())]
+async fn get_large_data() -> Result<Vec<u8>> {
+    // Times out after 60s AND compresses response
+    Ok(generate_large_data())
+}
+```
+
+Middleware executes in the order specified (top to bottom).
+
+## Router-Level Middleware
+
+Apply middleware to all routes using Axum's `.layer()` method:
+
+```rust
+use dioxus::prelude::*;
+
+fn main() {
+    #[cfg(not(feature = "server"))]
+    dioxus::launch(app);
+    
+    #[cfg(feature = "server")]
+    dioxus::serve(|| async move {
+        use dioxus::server::axum;
+        use axum::middleware::{from_fn, Next};
+        use axum::extract::Request;
+        
+        Ok(dioxus::server::router(app)
+            .layer(from_fn(logging_middleware))
+            .layer(tower_http::cors::CorsLayer::permissive()))
+    });
+}
+
+async fn logging_middleware(request: Request, next: Next) -> axum::response::Response {
+    println!("Request: {} {}", request.method(), request.uri().path());
+    let response = next.run(request).await;
+    println!("Response: {}", response.status());
+    response
+}
+
+fn app() -> Element {
+    rsx! { h1 { "My App" } }
+}
+```
+
+### Common Middleware Layers
+
+```rust
+use tower_http::{
+    cors::CorsLayer,
+    compression::CompressionLayer,
+    trace::TraceLayer,
+};
+
+dioxus::server::router(app)
+    // CORS for cross-origin requests
+    .layer(CorsLayer::permissive())
+    // Compress responses
+    .layer(CompressionLayer::new())
+    // Request tracing
+    .layer(TraceLayer::new_for_http())
+```
+
+## Authentication Middleware
+
+### Custom Auth Extractor
+
+Create a reusable authentication extractor:
+
+```rust
+use axum::extract::{FromRequestParts, Request};
+use axum::http::request::Parts;
+use dioxus::prelude::*;
+
+#[derive(Clone)]
+struct AuthUser {
+    id: u32,
+    name: String,
+}
+
+impl<S> FromRequestParts<S> for AuthUser
+where
+    S: Send + Sync,
+{
+    type Rejection = StatusCode;
+    
+    async fn from_request_parts(parts: &mut Parts, _state: &S) -> Result<Self, Self::Rejection> {
+        // Check authorization header
+        let auth_header = parts
+            .headers
+            .get("authorization")
+            .and_then(|v| v.to_str().ok())
+            .ok_or(StatusCode::UNAUTHORIZED)?;
+        
+        // Verify token (simplified)
+        if auth_header.starts_with("Bearer ") {
+            let token = &auth_header[7..];
+            if let Some(user) = verify_token(token).await {
+                return Ok(user);
+            }
+        }
+        
+        Err(StatusCode::UNAUTHORIZED)
+    }
+}
+
+async fn verify_token(token: &str) -> Option<AuthUser> {
+    // Verify JWT, check database, etc.
+    Some(AuthUser { id: 1, name: "Alice".into() })
+}
+
+// Use in server functions
+#[get("/api/protected", auth: AuthUser)]
+async fn protected_endpoint() -> Result<String> {
+    Ok(format!("Hello, {}!", auth.name))
+}
+```
+
+### Session-Based Auth
+
+Use cookies for session management:
+
+```rust
+use axum_extra::extract::cookie::{Cookie, CookieJar};
+
+#[post("/api/login")]
+async fn login(credentials: LoginRequest) -> Result<(CookieJar, User)> {
+    let user = authenticate(&credentials).await?;
+    let session_id = create_session(&user).await?;
+    
+    let mut jar = CookieJar::new();
+    jar = jar.add(Cookie::new("session_id", session_id));
+    
+    Ok((jar, user))
+}
+
+#[post("/api/logout", cookies: CookieJar)]
+async fn logout() -> Result<CookieJar> {
+    if let Some(session_id) = cookies.get("session_id") {
+        destroy_session(session_id.value()).await?;
+    }
+    
+    let mut jar = CookieJar::new();
+    jar = jar.remove(Cookie::named("session_id"));
+    Ok(jar)
+}
+
+#[get("/api/user", cookies: CookieJar)]
+async fn get_current_user() -> Result<User> {
+    let session_id = cookies
+        .get("session_id")
+        .ok_or(HttpError::unauthorized("Not logged in"))?;
+    
+    let user = get_user_from_session(session_id.value()).await?;
+    Ok(user)
+}
+```
+
+## Rate Limiting
+
+Limit request rates using `tower-governor`:
+
+```rust
+use tower_governor::{
+    governor::GovernorConfigBuilder, 
+    GovernorLayer,
+};
+
+#[cfg(feature = "server")]
+fn main() {
+    dioxus::serve(|| async move {
+        // 10 requests per minute
+        let governor_conf = Box::new(
+            GovernorConfigBuilder::default()
+                .per_second(10)
+                .burst_size(20)
+                .finish()
+                .unwrap(),
+        );
+        
+        Ok(dioxus::server::router(app)
+            .layer(GovernorLayer { config: Box::leak(governor_conf) }))
+    });
+}
+```
+
+Or per-route:
+
+```rust
+#[get("/api/expensive")]
+#[middleware(RateLimitLayer::new(10, Duration::from_secs(60)))]
+async fn expensive_operation() -> Result<String> {
+    // Limited to 10 requests per minute
+    Ok("Result".into())
+}
+```
+
+## CORS Configuration
+
+Configure Cross-Origin Resource Sharing:
+
+```rust
+use tower_http::cors::{CorsLayer, Any};
+use http::Method;
+
+let cors = CorsLayer::new()
+    // Allow specific origins
+    .allow_origin("https://example.com".parse::<HeaderValue>().unwrap())
+    // Or allow any origin
+    .allow_origin(Any)
+    // Allow specific methods
+    .allow_methods([Method::GET, Method::POST])
+    // Allow specific headers
+    .allow_headers(["authorization", "content-type"]);
+
+dioxus::server::router(app).layer(cors)
+```
+
+## Request Logging
+
+Log all requests:
+
+```rust
+use tower_http::trace::{TraceLayer, DefaultMakeSpan, DefaultOnResponse};
+use tracing::Level;
+
+let trace_layer = TraceLayer::new_for_http()
+    .make_span_with(DefaultMakeSpan::new().level(Level::INFO))
+    .on_response(DefaultOnResponse::new().level(Level::INFO));
+
+dioxus::server::router(app).layer(trace_layer)
+```
+
+Custom logging:
+
+```rust
+use axum::middleware::{from_fn, Next};
+use axum::extract::Request;
+
+async fn log_requests(request: Request, next: Next) -> axum::response::Response {
+    let method = request.method().clone();
+    let uri = request.uri().clone();
+    let start = std::time::Instant::now();
+    
+    let response = next.run(request).await;
+    
+    let duration = start.elapsed();
+    println!(
+        "{} {} - {} - {:?}",
+        method, uri, response.status(), duration
+    );
+    
+    response
+}
+
+dioxus::server::router(app).layer(from_fn(log_requests))
+```
+
+## State Injection
+
+Share state across your application:
+
+```rust
+use dioxus::fullstack::{FullstackContext, extract::State};
+use axum::extract::FromRef;
+
+#[derive(Clone)]
+struct AppState {
+    db: DatabasePool,
+    cache: Arc<RwLock<Cache>>,
+}
+
+impl FromRef<FullstackContext> for AppState {
+    fn from_ref(state: &FullstackContext) -> Self {
+        state.extension::<AppState>().unwrap()
+    }
+}
+
+#[get("/api/users", state: State<AppState>)]
+async fn list_users() -> Result<Vec<User>> {
+    let users = state.db.query("SELECT * FROM users").await?;
+    Ok(users)
+}
+
+#[cfg(feature = "server")]
+fn main() {
+    dioxus::serve(|| async move {
+        let app_state = AppState {
+            db: DatabasePool::connect("...").await?,
+            cache: Arc::new(RwLock::new(Cache::new())),
+        };
+        
+        Ok(dioxus::server::router(app)
+            .layer(axum::Extension(app_state)))
+    });
+}
+```
+
+See `examples/07-fullstack/server_state.rs` for more details.
+
+## Error Handling
+
+Handle errors in middleware:
+
+```rust
+use axum::middleware::from_fn;
+use axum::extract::Request;
+use axum::response::{IntoResponse, Response};
+use http::StatusCode;
+
+async fn error_handler(request: Request, next: Next) -> Response {
+    let response = next.run(request).await;
+    
+    if response.status().is_server_error() {
+        // Log error
+        log::error!("Server error: {}", response.status());
+        
+        // Return custom error page
+        return (StatusCode::INTERNAL_SERVER_ERROR, "Something went wrong")
+            .into_response();
+    }
+    
+    response
+}
+
+dioxus::server::router(app).layer(from_fn(error_handler))
+```
+
+## Compression
+
+Compress responses to reduce bandwidth:
+
+```rust
+use tower_http::compression::CompressionLayer;
+
+dioxus::server::router(app)
+    .layer(CompressionLayer::new())
+```
+
+Supports gzip, brotli, deflate, and zstd.
+
+## Request ID Tracking
+
+Add unique IDs to each request:
+
+```rust
+use uuid::Uuid;
+use axum::middleware::from_fn;
+
+async fn request_id_middleware(mut request: Request, next: Next) -> Response {
+    let id = Uuid::new_v4().to_string();
+    request.extensions_mut().insert(id.clone());
+    
+    let mut response = next.run(request).await;
+    response.headers_mut().insert(
+        "x-request-id",
+        id.parse().unwrap(),
+    );
+    
+    response
+}
+```
+
+## Security Headers
+
+Add security headers:
+
+```rust
+use axum::middleware::from_fn;
+use http::header;
+
+async fn security_headers(request: Request, next: Next) -> Response {
+    let mut response = next.run(request).await;
+    let headers = response.headers_mut();
+    
+    headers.insert(
+        header::X_CONTENT_TYPE_OPTIONS,
+        "nosniff".parse().unwrap(),
+    );
+    headers.insert(
+        header::X_FRAME_OPTIONS,
+        "DENY".parse().unwrap(),
+    );
+    headers.insert(
+        header::STRICT_TRANSPORT_SECURITY,
+        "max-age=31536000; includeSubDomains".parse().unwrap(),
+    );
+    
+    response
+}
+
+dioxus::server::router(app).layer(from_fn(security_headers))
+```
+
+## Timeout
+
+Timeout long-running requests:
+
+```rust
+use tower_http::timeout::TimeoutLayer;
+use std::time::Duration;
+
+// Global timeout
+dioxus::server::router(app)
+    .layer(TimeoutLayer::new(Duration::from_secs(30)))
+
+// Or per-route
+#[get("/api/slow")]
+#[middleware(TimeoutLayer::new(Duration::from_secs(60)))]
+async fn slow_endpoint() -> Result<String> {
+    tokio::time::sleep(Duration::from_secs(45)).await;
+    Ok("Done".into())
+}
+```
+
+## Custom Middleware
+
+Create your own middleware:
+
+```rust
+use axum::middleware::from_fn;
+use axum::extract::Request;
+
+async fn custom_middleware(request: Request, next: Next) -> Response {
+    // Before request
+    println!("Before: {}", request.uri());
+    
+    // Process request
+    let mut response = next.run(request).await;
+    
+    // After request
+    println!("After: {}", response.status());
+    response.headers_mut().insert(
+        "x-custom-header",
+        "custom-value".parse().unwrap(),
+    );
+    
+    response
+}
+
+dioxus::server::router(app).layer(from_fn(custom_middleware))
+```
+
+## Middleware Order
+
+Middleware executes in order:
+
+```rust
+dioxus::server::router(app)
+    .layer(from_fn(logging))      // 1. First (outermost)
+    .layer(from_fn(auth))          // 2. Second
+    .layer(from_fn(rate_limit))    // 3. Third (innermost)
+```
+
+Request flow:
+1. logging → 2. auth → 3. rate_limit → **handler** → 3. rate_limit → 2. auth → 1. logging
+
+## Best Practices
+
+1. **Use per-route middleware** for endpoint-specific concerns
+2. **Use router-level middleware** for cross-cutting concerns (logging, CORS)
+3. **Put auth early** in the middleware chain
+4. **Add timeouts** to prevent hanging requests
+5. **Log request IDs** for debugging
+6. **Validate early** - reject bad requests before they reach handlers
+7. **Use typed extractors** instead of manually parsing headers
+8. **Consider performance** - middleware runs on every request
+
+## Examples
+
+- `examples/07-fullstack/middleware.rs` - Basic middleware usage
+- `examples/07-fullstack/auth/` - Authentication example
+- `examples/07-fullstack/server_state.rs` - State and extractors
+- `examples/07-fullstack/custom_axum_serve.rs` - Custom server setup
+
+## Further Reading
+
+- [Axum Middleware Guide](https://docs.rs/axum/latest/axum/middleware/index.html)
+- [Tower Middleware](https://docs.rs/tower/latest/tower/trait.Service.html)
+- [tower-http Crate](https://docs.rs/tower-http/latest/tower_http/)

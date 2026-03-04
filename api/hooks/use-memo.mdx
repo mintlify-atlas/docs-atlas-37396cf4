@@ -1,0 +1,121 @@
+---
+title: 'use_memo'
+description: 'Create a memoized derived value that only recomputes when dependencies change'
+keywords: ['memo', 'derived', 'computed', 'hook']
+---
+
+# use_memo
+
+Creates a memoized computed value with automatic dependency tracking. The value is only recomputed when reactive dependencies change.
+
+## Signature
+
+```rust
+pub fn use_memo<R: PartialEq + 'static>(f: impl FnMut() -> R + 'static) -> Memo<R>
+```
+
+## Parameters
+
+<ParamField path="f" type="impl FnMut() -> R + 'static" required>
+  Computation function that returns the derived value. This function is called initially and whenever any reactive values (signals, memos, etc.) read inside the function change.
+</ParamField>
+
+## Type Constraints
+
+<ParamField path="R" type="type">
+  The return type must implement `PartialEq` to determine if the computed value has changed. If the computed value is equal to the previous value, subscribers won't be notified.
+</ParamField>
+
+## Returns
+
+<ResponseField name="Memo<R>" type="Memo<R>">
+  A copyable memo handle that can be read like a signal. Reading from the memo subscribes the current component to updates.
+</ResponseField>
+
+## Description
+
+Memos are for computing derived state from signals or other reactive values. They automatically track dependencies and only recompute when those dependencies change.
+
+Key characteristics:
+- **Cached**: The computed value is cached and only recomputed when dependencies change
+- **Compared**: New values are compared with `PartialEq` - components only re-render if the value actually changes
+- **Reactive**: Reading from a memo subscribes components to updates, just like signals
+- **Copy**: Memos implement `Copy` and can be freely passed around
+
+<Tip>
+  Use memos instead of effects when you need to compute a value from other values. Memos are more efficient because they cache results and only update when necessary.
+</Tip>
+
+## Example
+
+Compute full name from first and last name:
+
+```rust
+use dioxus::prelude::*;
+
+fn App() -> Element {
+    let mut first_name = use_signal(|| "John".to_string());
+    let mut last_name = use_signal(|| "Doe".to_string());
+
+    // This only recomputes when first_name or last_name changes
+    let full_name = use_memo(move || {
+        format!("{} {}", first_name(), last_name())
+    });
+
+    rsx! {
+        div {
+            input {
+                value: "{first_name}",
+                oninput: move |evt| first_name.set(evt.value())
+            }
+            input {
+                value: "{last_name}",
+                oninput: move |evt| last_name.set(evt.value())
+            }
+            p { "Full name: {full_name}" }
+        }
+    }
+}
+```
+
+## Example: Expensive computation
+
+Memoize expensive filtering operation:
+
+```rust
+use dioxus::prelude::*;
+
+fn SearchResults() -> Element {
+    let mut search_term = use_signal(|| String::new());
+    let items = use_signal(|| vec![
+        "Apple", "Banana", "Cherry", "Date", "Elderberry"
+    ]);
+
+    // Filtering only happens when search_term or items change
+    let filtered_items = use_memo(move || {
+        let term = search_term().to_lowercase();
+        items()
+            .into_iter()
+            .filter(|item| item.to_lowercase().contains(&term))
+            .collect::<Vec<_>>()
+    });
+
+    rsx! {
+        input {
+            placeholder: "Search...",
+            oninput: move |evt| search_term.set(evt.value())
+        }
+        ul {
+            for item in filtered_items().iter() {
+                li { "{item}" }
+            }
+        }
+    }
+}
+```
+
+## Related
+
+- `use_signal` - Create reactive state
+- `use_resource` - Async memoized computations
+- `use_effect` - Run side effects instead of computing values

@@ -1,0 +1,704 @@
+---
+title: Testing
+description: Testing strategies and utilities for Dioxus applications
+---
+
+Dioxus provides tools and patterns for testing components, hooks, and application logic effectively.
+
+## Testing Components
+
+### Basic Component Tests
+
+Test components using `VirtualDom` directly:
+
+```rust
+use dioxus::prelude::*;
+
+#[test]
+fn test_counter_component() {
+    #[component]
+    fn Counter(initial: i32) -> Element {
+        let mut count = use_signal(|| initial);
+        
+        rsx! {
+            button { 
+                onclick: move |_| count += 1,
+                "Count: {count}"
+            }
+        }
+    }
+    
+    let mut dom = VirtualDom::new_with_props(
+        Counter,
+        CounterProps { initial: 0 }
+    );
+    
+    // Initial render
+    let mutations = dom.rebuild_to_vec();
+    assert!(!mutations.edits.is_empty());
+    
+    // Verify initial state
+    let root_scope = dom.base_scope();
+    // Add assertions...
+}
+```
+
+**Reference**: `packages/core/src/virtual_dom.rs:219-298`
+
+### Testing with NoOpMutations
+
+Use `NoOpMutations` to test without a renderer:
+
+```rust
+use dioxus_core::NoOpMutations;
+
+#[test]
+fn test_component_logic() {
+    let mut dom = VirtualDom::new(app);
+    
+    // Rebuild without handling mutations
+    dom.rebuild(&mut NoOpMutations);
+    
+    // Test logic without worrying about rendering
+    assert!(dom.get_scope(ScopeId(0)).is_some());
+}
+```
+
+**Reference**: `packages/core/src/mutations.rs:383-423`
+
+### Testing Component Re-renders
+
+```rust
+use dioxus::prelude::*;
+
+#[test]
+fn test_component_updates() {
+    #[component]
+    fn Toggle() -> Element {
+        let mut enabled = use_signal(|| false);
+        
+        rsx! {
+            button { 
+                onclick: move |_| enabled.toggle(),
+                if enabled() { "On" } else { "Off" }
+            }
+        }
+    }
+    
+    let mut dom = VirtualDom::new(Toggle);
+    dom.rebuild_in_place();
+    
+    // Simulate click
+    let runtime = dom.runtime();
+    // Trigger event handler...
+    
+    // Check for updates
+    let mutations = dom.render_immediate_to_vec();
+    assert!(!mutations.edits.is_empty());
+}
+```
+
+## Testing Hooks
+
+### Testing use_signal
+
+```rust
+use dioxus::prelude::*;
+
+#[test]
+fn test_signal_hook() {
+    #[component]
+    fn TestComponent() -> Element {
+        let count = use_signal(|| 0);
+        
+        // Test signal operations
+        assert_eq!(count(), 0);
+        count.set(5);
+        assert_eq!(count(), 5);
+        count += 1;
+        assert_eq!(count(), 6);
+        
+        rsx! { div { "{count}" } }
+    }
+    
+    let mut dom = VirtualDom::new(TestComponent);
+    dom.rebuild_in_place();
+}
+```
+
+### Testing use_effect
+
+```rust
+use dioxus::prelude::*;
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
+
+#[test]
+fn test_effect_hook() {
+    let effect_ran = Arc::new(AtomicBool::new(false));
+    let effect_ran_clone = effect_ran.clone();
+    
+    #[component]
+    fn TestComponent() -> Element {
+        use_effect(move || {
+            effect_ran_clone.store(true, Ordering::SeqCst);
+        });
+        
+        rsx! { div {} }
+    }
+    
+    let mut dom = VirtualDom::new(TestComponent);
+    dom.rebuild_in_place();
+    
+    // Effects run after render
+    futures::executor::block_on(async {
+        dom.wait_for_work().await;
+        dom.render_immediate_to_vec();
+    });
+    
+    assert!(effect_ran.load(Ordering::SeqCst));
+}
+```
+
+### Testing use_resource
+
+```rust
+use dioxus::prelude::*;
+
+#[tokio::test]
+async fn test_resource_hook() {
+    async fn fetch_data() -> Result<String, ()> {
+        Ok("test data".to_string())
+    }
+    
+    #[component]
+    fn TestComponent() -> Element {
+        let data = use_resource(fetch_data);
+        
+        match data() {
+            Some(Ok(value)) => rsx! { div { "{value}" } },
+            Some(Err(_)) => rsx! { div { "Error" } },
+            None => rsx! { div { "Loading" } },
+        }
+    }
+    
+    let mut dom = VirtualDom::new(TestComponent);
+    dom.rebuild_in_place();
+    
+    // Wait for resource to load
+    dom.wait_for_suspense().await;
+    
+    // Resource should be loaded now
+    let mutations = dom.render_immediate_to_vec();
+    // Assert mutations contain expected data
+}
+```
+
+## Testing Event Handlers
+
+### Simulating Events
+
+```rust
+use dioxus::prelude::*;
+use dioxus_core::{Event, ElementId};
+use std::rc::Rc;
+
+#[test]
+fn test_click_handler() {
+    #[component]
+    fn ClickableComponent() -> Element {
+        let mut clicked = use_signal(|| false);
+        
+        rsx! {
+            button { 
+                onclick: move |_| clicked.set(true),
+                id: "test-button",
+                "Click me"
+            }
+        }
+    }
+    
+    let mut dom = VirtualDom::new(ClickableComponent);
+    dom.rebuild_in_place();
+    
+    // Simulate click event
+    let runtime = dom.runtime();
+    let event = Event::new(Rc::new(()) as Rc<dyn std::any::Any>, true);
+    runtime.handle_event("onclick", event, ElementId(1));
+    
+    // Process the event
+    futures::executor::block_on(dom.wait_for_work());
+    dom.render_immediate_to_vec();
+    
+    // Verify state changed
+}
+```
+
+### Testing Input Events
+
+```rust
+use dioxus::prelude::*;
+
+#[test]
+fn test_input_handler() {
+    #[component]
+    fn InputComponent() -> Element {
+        let mut text = use_signal(|| String::new());
+        
+        rsx! {
+            input {
+                value: "{text}",
+                oninput: move |e| text.set(e.value())
+            }
+        }
+    }
+    
+    let mut dom = VirtualDom::new(InputComponent);
+    dom.rebuild_in_place();
+    
+    // Simulate input event with data
+    // ...
+}
+```
+
+## Testing Async Code
+
+### Testing Futures
+
+```rust
+use dioxus::prelude::*;
+
+#[tokio::test]
+async fn test_async_operation() {
+    async fn async_task() -> Result<i32, ()> {
+        tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
+        Ok(42)
+    }
+    
+    #[component]
+    fn AsyncComponent() -> Element {
+        let result = use_signal(|| None);
+        
+        spawn(async move {
+            let value = async_task().await.unwrap();
+            result.set(Some(value));
+        });
+        
+        rsx! {
+            match result() {
+                Some(v) => rsx! { "Result: {v}" },
+                None => rsx! { "Loading" }
+            }
+        }
+    }
+    
+    let mut dom = VirtualDom::new(AsyncComponent);
+    dom.rebuild_in_place();
+    
+    // Wait for async work
+    dom.wait_for_work().await;
+    dom.render_immediate_to_vec();
+}
+```
+
+### Testing Suspense
+
+```rust
+use dioxus::prelude::*;
+
+#[tokio::test]
+async fn test_suspense_boundary() {
+    async fn slow_fetch() -> Result<String, ()> {
+        tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+        Ok("data".to_string())
+    }
+    
+    #[component]
+    fn SuspenseComponent() -> Element {
+        rsx! {
+            Suspense {
+                fallback: |_| rsx! { "Loading..." },
+                AsyncContent {}
+            }
+        }
+    }
+    
+    #[component]
+    fn AsyncContent() -> Element {
+        let data = use_resource(slow_fetch);
+        
+        match data() {
+            Some(Ok(s)) => rsx! { "{s}" },
+            _ => rsx! { "" }
+        }
+    }
+    
+    let mut dom = VirtualDom::new(SuspenseComponent);
+    dom.rebuild_in_place();
+    
+    // Initially shows fallback
+    let mutations = dom.render_immediate_to_vec();
+    // Assert fallback is rendered
+    
+    // Wait for suspense to resolve
+    dom.wait_for_suspense().await;
+    
+    // Now shows actual content
+    let mutations = dom.render_immediate_to_vec();
+    // Assert content is rendered
+}
+```
+
+**Reference**: `packages/core/src/virtual_dom.rs:640-653`
+
+## Testing Context
+
+### Providing Test Context
+
+```rust
+use dioxus::prelude::*;
+
+#[derive(Clone)]
+struct TestConfig {
+    api_url: String,
+}
+
+#[test]
+fn test_with_context() {
+    #[component]
+    fn ComponentUsingContext() -> Element {
+        let config = use_context::<TestConfig>();
+        
+        rsx! { 
+            div { "API: {config.api_url}" }
+        }
+    }
+    
+    let mut dom = VirtualDom::new(ComponentUsingContext);
+    
+    // Provide context before rendering
+    dom.provide_root_context(TestConfig {
+        api_url: "http://test.example.com".to_string(),
+    });
+    
+    dom.rebuild_in_place();
+}
+```
+
+**Reference**: `packages/core/src/virtual_dom.rs:359-377`
+
+## Integration Testing
+
+### Testing Full Applications
+
+```rust
+use dioxus::prelude::*;
+
+#[tokio::test]
+async fn test_full_app() {
+    #[component]
+    fn App() -> Element {
+        let mut count = use_signal(|| 0);
+        
+        rsx! {
+            div {
+                h1 { "Counter App" }
+                button { 
+                    onclick: move |_| count += 1,
+                    "Increment"
+                }
+                p { "Count: {count}" }
+            }
+        }
+    }
+    
+    let mut dom = VirtualDom::new(App);
+    
+    // Initial render
+    dom.rebuild_in_place();
+    
+    // Simulate user interaction
+    let runtime = dom.runtime();
+    let event = Event::new(Rc::new(()) as Rc<dyn std::any::Any>, true);
+    runtime.handle_event("onclick", event, ElementId(1));
+    
+    // Process updates
+    dom.wait_for_work().await;
+    let mutations = dom.render_immediate_to_vec();
+    
+    // Verify final state
+    assert!(!mutations.edits.is_empty());
+}
+```
+
+### Testing Router Integration
+
+```rust
+use dioxus::prelude::*;
+use dioxus_router::prelude::*;
+
+#[test]
+fn test_routing() {
+    #[derive(Routable, Clone)]
+    enum Route {
+        #[route("/")]
+        Home,
+        #[route("/about")]
+        About,
+    }
+    
+    #[component]
+    fn App() -> Element {
+        rsx! {
+            Router::<Route> {}
+        }
+    }
+    
+    let mut dom = VirtualDom::new(App);
+    dom.rebuild_in_place();
+    
+    // Test navigation
+    // ...
+}
+```
+
+## Mock Data and Services
+
+### Mocking API Calls
+
+```rust
+use dioxus::prelude::*;
+use std::sync::Arc;
+
+trait ApiService: Clone + 'static {
+    async fn fetch_user(&self, id: u64) -> Result<User, Error>;
+}
+
+#[derive(Clone)]
+struct MockApiService {
+    users: Arc<Vec<User>>,
+}
+
+impl ApiService for MockApiService {
+    async fn fetch_user(&self, id: u64) -> Result<User, Error> {
+        self.users
+            .iter()
+            .find(|u| u.id == id)
+            .cloned()
+            .ok_or(Error::NotFound)
+    }
+}
+
+#[test]
+fn test_with_mock_api() {
+    #[component]
+    fn UserProfile<S: ApiService>(api: S, user_id: u64) -> Element {
+        let user = use_resource(move || api.clone().fetch_user(user_id));
+        
+        rsx! {
+            match user() {
+                Some(Ok(u)) => rsx! { "User: {u.name}" },
+                _ => rsx! { "Loading" }
+            }
+        }
+    }
+    
+    let mock_api = MockApiService {
+        users: Arc::new(vec![
+            User { id: 1, name: "Alice".to_string() },
+        ]),
+    };
+    
+    let mut dom = VirtualDom::new_with_props(
+        UserProfile,
+        UserProfileProps {
+            api: mock_api,
+            user_id: 1,
+        },
+    );
+    
+    dom.rebuild_in_place();
+}
+```
+
+## Snapshot Testing
+
+### Capturing VirtualDOM State
+
+```rust
+use dioxus::prelude::*;
+use serde::Serialize;
+
+#[derive(Serialize)]
+struct DomSnapshot {
+    scope_count: usize,
+    mutation_count: usize,
+}
+
+#[test]
+fn test_snapshot() {
+    let mut dom = VirtualDom::new(app);
+    let mutations = dom.rebuild_to_vec();
+    
+    let snapshot = DomSnapshot {
+        scope_count: dom.scopes.len(),
+        mutation_count: mutations.edits.len(),
+    };
+    
+    // Compare with saved snapshot
+    let expected = DomSnapshot {
+        scope_count: 1,
+        mutation_count: 2,
+    };
+    
+    assert_eq!(snapshot.scope_count, expected.scope_count);
+    assert_eq!(snapshot.mutation_count, expected.mutation_count);
+}
+```
+
+## Testing Utilities
+
+### Helper Functions
+
+```rust
+use dioxus::prelude::*;
+use dioxus_core::{Mutations, ElementId};
+
+// Helper to render and get mutations
+fn render_component<P: Clone + 'static>(
+    component: fn(P) -> Element,
+    props: P,
+) -> Mutations {
+    let mut dom = VirtualDom::new_with_props(component, props);
+    dom.rebuild_to_vec()
+}
+
+// Helper to simulate click
+fn click_element(dom: &VirtualDom, element_id: ElementId) {
+    let event = Event::new(Rc::new(()) as Rc<dyn std::any::Any>, true);
+    dom.runtime().handle_event("onclick", event, element_id);
+}
+
+// Helper to wait for updates
+async fn process_updates(dom: &mut VirtualDom) -> Mutations {
+    dom.wait_for_work().await;
+    dom.render_immediate_to_vec()
+}
+```
+
+### Test Macros
+
+```rust
+// Create a test macro for common setup
+macro_rules! test_component {
+    ($name:ident, $component:expr, $test:expr) => {
+        #[test]
+        fn $name() {
+            let mut dom = VirtualDom::new($component);
+            dom.rebuild_in_place();
+            $test(dom);
+        }
+    };
+}
+
+test_component!(test_my_component, MyComponent, |dom| {
+    assert!(dom.get_scope(ScopeId(0)).is_some());
+});
+```
+
+## Best Practices
+
+1. **Test Behavior, Not Implementation**: Focus on component behavior rather than internal details
+2. **Use Mocks**: Mock external dependencies for isolated tests
+3. **Async Tests**: Use `#[tokio::test]` for async tests
+4. **Context Injection**: Provide test context for dependencies
+5. **Snapshot Testing**: Use snapshots for regression testing
+6. **Integration Tests**: Test complete user flows
+7. **Event Simulation**: Test event handlers with simulated events
+
+## Common Patterns
+
+### Testing Error Boundaries
+
+```rust
+#[component]
+fn ComponentThatErrors() -> Element {
+    panic!("Test error");
+    rsx! { div {} }
+}
+
+#[test]
+fn test_error_boundary() {
+    #[component]
+    fn WithBoundary() -> Element {
+        rsx! {
+            ErrorBoundary {
+                handle_error: |_| rsx! { "Error caught" },
+                ComponentThatErrors {}
+            }
+        }
+    }
+    
+    let mut dom = VirtualDom::new(WithBoundary);
+    dom.rebuild_in_place();
+    // Error should be caught
+}
+```
+
+**Reference**: `packages/core/tests/error_boundary.rs`
+
+### Testing Props Memoization
+
+```rust
+use std::cell::Cell;
+use std::rc::Rc;
+
+#[test]
+fn test_memoization() {
+    let render_count = Rc::new(Cell::new(0));
+    let counter = render_count.clone();
+    
+    #[component]
+    fn MemoizedComponent(value: i32) -> Element {
+        counter.set(counter.get() + 1);
+        rsx! { "{value}" }
+    }
+    
+    let mut dom = VirtualDom::new_with_props(
+        MemoizedComponent,
+        MemoizedComponentProps { value: 1 },
+    );
+    
+    dom.rebuild_in_place();
+    assert_eq!(render_count.get(), 1);
+    
+    // Re-render with same props - should not re-run
+    dom.rebuild_in_place();
+    assert_eq!(render_count.get(), 1);
+}
+```
+
+## Debugging Tests
+
+Enable logging in tests:
+
+```rust
+use tracing_subscriber;
+
+#[test]
+fn test_with_logging() {
+    tracing_subscriber::fmt()
+        .with_test_writer()
+        .with_max_level(tracing::Level::DEBUG)
+        .init();
+    
+    // Your test code
+}
+```
+
+## Additional Resources
+
+- Core tests: `packages/core/tests/`
+- Test utilities: `packages/core/src/virtual_dom.rs`
+- Example tests: `packages/core/tests/create_dom.rs`
+- Error boundary tests: `packages/core/tests/error_boundary.rs`

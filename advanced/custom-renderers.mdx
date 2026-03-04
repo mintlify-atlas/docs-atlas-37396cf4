@@ -1,0 +1,368 @@
+---
+title: Custom Renderers
+description: Build custom renderers using the WriteMutations trait
+---
+
+Dioxus's renderer-agnostic architecture allows you to build custom renderers for any platform. The core mechanism is the `WriteMutations` trait, which translates VirtualDOM changes into platform-specific operations.
+
+## WriteMutations Trait
+
+The `WriteMutations` trait is the bridge between Dioxus's VirtualDOM and your rendering backend. It defines methods for creating, updating, and removing DOM elements.
+
+### Core Interface
+
+```rust
+pub trait WriteMutations {
+    fn append_children(&mut self, id: ElementId, m: usize);
+    fn assign_node_id(&mut self, path: &'static [u8], id: ElementId);
+    fn create_placeholder(&mut self, id: ElementId);
+    fn create_text_node(&mut self, value: &str, id: ElementId);
+    fn load_template(&mut self, template: Template, index: usize, id: ElementId);
+    fn replace_node_with(&mut self, id: ElementId, m: usize);
+    fn insert_nodes_after(&mut self, id: ElementId, m: usize);
+    fn insert_nodes_before(&mut self, id: ElementId, m: usize);
+    fn set_attribute(&mut self, name: &'static str, ns: Option<&'static str>, value: &AttributeValue, id: ElementId);
+    fn set_node_text(&mut self, value: &str, id: ElementId);
+    fn create_event_listener(&mut self, name: &'static str, id: ElementId);
+    fn remove_event_listener(&mut self, name: &'static str, id: ElementId);
+    fn remove_node(&mut self, id: ElementId);
+    fn push_root(&mut self, id: ElementId);
+}
+```
+
+**Location**: `packages/core/src/mutations.rs:14-118`
+
+## Building a Custom Renderer
+
+### Step 1: Define Your DOM Representation
+
+First, create a data structure to represent your platform's DOM:
+
+```rust
+use std::collections::HashMap;
+use dioxus_core::ElementId;
+
+struct CustomNode {
+    tag: String,
+    text: Option<String>,
+    attributes: HashMap<String, String>,
+    children: Vec<ElementId>,
+}
+
+struct CustomDom {
+    nodes: HashMap<usize, CustomNode>,
+    stack: Vec<ElementId>,
+    templates: HashMap<String, Template>,
+}
+
+impl CustomDom {
+    fn new() -> Self {
+        Self {
+            nodes: HashMap::new(),
+            stack: Vec::new(),
+            templates: HashMap::new(),
+        }
+    }
+}
+```
+
+### Step 2: Implement WriteMutations
+
+Implement each mutation method to modify your DOM representation:
+
+```rust
+use dioxus_core::{WriteMutations, AttributeValue, Template};
+
+impl WriteMutations for CustomDom {
+    fn append_children(&mut self, id: ElementId, m: usize) {
+        let children: Vec<_> = self.stack.drain(self.stack.len() - m..).collect();
+        
+        if let Some(parent) = self.nodes.get_mut(&id.0) {
+            parent.children.extend(children);
+        }
+    }
+
+    fn assign_node_id(&mut self, path: &'static [u8], id: ElementId) {
+        // Navigate path to find node in template and assign ID
+        let template_root = self.stack.last().copied().unwrap();
+        let target = self.navigate_path(template_root, path);
+        
+        // Clone the node at target and give it the new ID
+        if let Some(node) = self.nodes.get(&target.0).cloned() {
+            self.nodes.insert(id.0, node);
+        }
+    }
+
+    fn create_placeholder(&mut self, id: ElementId) {
+        let node = CustomNode {
+            tag: "placeholder".to_string(),
+            text: None,
+            attributes: HashMap::new(),
+            children: Vec::new(),
+        };
+        self.nodes.insert(id.0, node);
+        self.stack.push(id);
+    }
+
+    fn create_text_node(&mut self, value: &str, id: ElementId) {
+        let node = CustomNode {
+            tag: "text".to_string(),
+            text: Some(value.to_string()),
+            attributes: HashMap::new(),
+            children: Vec::new(),
+        };
+        self.nodes.insert(id.0, node);
+        self.stack.push(id);
+    }
+
+    fn load_template(&mut self, template: Template, index: usize, id: ElementId) {
+        // Templates are pre-compiled DOM structures
+        // Clone the template and assign it the given ID
+        let template_node = self.clone_template(&template, index);
+        self.nodes.insert(id.0, template_node);
+        self.stack.push(id);
+    }
+
+    fn replace_node_with(&mut self, id: ElementId, m: usize) {
+        let new_nodes: Vec<_> = self.stack.drain(self.stack.len() - m..).collect();
+        
+        // Find parent and replace old node with new nodes
+        if let Some((parent_id, idx)) = self.find_parent(id) {
+            if let Some(parent) = self.nodes.get_mut(&parent_id.0) {
+                parent.children.splice(idx..idx + 1, new_nodes);
+            }
+        }
+        
+        self.nodes.remove(&id.0);
+    }
+
+    fn set_attribute(
+        &mut self,
+        name: &'static str,
+        _ns: Option<&'static str>,
+        value: &AttributeValue,
+        id: ElementId,
+    ) {
+        if let Some(node) = self.nodes.get_mut(&id.0) {
+            match value {
+                AttributeValue::Text(s) => {
+                    node.attributes.insert(name.to_string(), s.clone());
+                }
+                AttributeValue::Bool(b) => {
+                    node.attributes.insert(name.to_string(), b.to_string());
+                }
+                AttributeValue::Int(i) => {
+                    node.attributes.insert(name.to_string(), i.to_string());
+                }
+                AttributeValue::Float(f) => {
+                    node.attributes.insert(name.to_string(), f.to_string());
+                }
+                AttributeValue::None => {
+                    node.attributes.remove(name);
+                }
+                _ => {}
+            }
+        }
+    }
+
+    fn set_node_text(&mut self, value: &str, id: ElementId) {
+        if let Some(node) = self.nodes.get_mut(&id.0) {
+            node.text = Some(value.to_string());
+        }
+    }
+
+    fn create_event_listener(&mut self, name: &'static str, id: ElementId) {
+        // Register event listener for this node
+        // Implementation depends on your event system
+    }
+
+    fn remove_event_listener(&mut self, name: &'static str, id: ElementId) {
+        // Unregister event listener
+    }
+
+    fn remove_node(&mut self, id: ElementId) {
+        self.nodes.remove(&id.0);
+    }
+
+    fn push_root(&mut self, id: ElementId) {
+        self.stack.push(id);
+    }
+}
+```
+
+### Step 3: Create the Renderer Loop
+
+Integrate with VirtualDOM to handle updates:
+
+```rust
+use dioxus::prelude::*;
+
+fn main() {
+    let mut dom = VirtualDom::new(app);
+    let mut custom_dom = CustomDom::new();
+    
+    // Initial render
+    dom.rebuild(&mut custom_dom);
+    render_to_output(&custom_dom);
+    
+    // Event loop
+    loop {
+        // Wait for work (events, signals, etc.)
+        futures::executor::block_on(dom.wait_for_work());
+        
+        // Render changes
+        dom.render_immediate(&mut custom_dom);
+        render_to_output(&custom_dom);
+    }
+}
+
+fn app() -> Element {
+    rsx! {
+        div { "Hello from custom renderer!" }
+    }
+}
+
+fn render_to_output(dom: &CustomDom) {
+    // Convert your custom DOM to actual output
+    // (terminal, GPU commands, network protocol, etc.)
+}
+```
+
+## Understanding Mutations
+
+Dioxus generates mutations in a specific order that forms a stack-based execution model:
+
+### Stack Operations
+
+The mutation stack is used to pass nodes between operations:
+
+```rust
+// Creating nodes pushes them onto the stack
+CreateTextNode { value: "Hello", id: ElementId(1) }  // Stack: [1]
+CreateTextNode { value: "World", id: ElementId(2) }  // Stack: [1, 2]
+
+// AppendChildren pops m nodes from stack and adds to parent
+AppendChildren { id: ElementId(0), m: 2 }  // Stack: [] (consumed 1 and 2)
+```
+
+### Template System
+
+Templates are pre-compiled DOM structures that can be efficiently cloned:
+
+```rust
+rsx! {
+    div { class: "container",
+        p { "Static text" }
+    }
+}
+```
+
+Compiles to a template that can be instantiated with `LoadTemplate` instead of creating each element individually.
+
+**Reference**: `packages/core/src/mutations.rs:120-282`
+
+## Real-World Examples
+
+### Terminal Renderer (TUI)
+
+For a TUI renderer, you'd map mutations to terminal operations:
+
+```rust
+use crossterm::{cursor, style, QueueableCommand};
+use std::io::stdout;
+
+impl WriteMutations for TuiRenderer {
+    fn create_text_node(&mut self, value: &str, id: ElementId) {
+        let node = TuiNode::Text {
+            content: value.to_string(),
+            position: self.calculate_position(id),
+        };
+        self.nodes.insert(id, node);
+        self.needs_redraw = true;
+    }
+    
+    fn set_attribute(&mut self, name: &'static str, _ns: Option<&'static str>, value: &AttributeValue, id: ElementId) {
+        match name {
+            "color" => self.set_color(id, value),
+            "style" => self.set_style(id, value),
+            _ => {}
+        }
+    }
+}
+```
+
+### GPU Renderer
+
+For GPU rendering, mutations would generate draw commands:
+
+```rust
+impl WriteMutations for GpuRenderer {
+    fn create_element(&mut self, tag: &str, id: ElementId) {
+        match tag {
+            "rect" => self.add_quad(id),
+            "circle" => self.add_circle(id),
+            "text" => self.add_text_mesh(id),
+            _ => {}
+        }
+    }
+    
+    fn set_attribute(&mut self, name: &'static str, _ns: Option<&'static str>, value: &AttributeValue, id: ElementId) {
+        match name {
+            "x" | "y" | "width" | "height" => self.update_transform(id, name, value),
+            "color" => self.update_material(id, value),
+            _ => {}
+        }
+    }
+}
+```
+
+## Event Handling
+
+Custom renderers need to send events back to the VirtualDOM:
+
+```rust
+use dioxus_core::Event;
+use std::rc::Rc;
+
+// When an event occurs in your renderer:
+fn handle_click(&self, element_id: ElementId, x: i32, y: i32) {
+    let data = Rc::new((x, y)) as Rc<dyn Any>;
+    let event = Event::new(data, true /* bubbles */);
+    
+    self.runtime.handle_event("onclick", event, element_id);
+}
+```
+
+**Reference**: `packages/core/src/virtual_dom.rs:97-107`
+
+## Best Practices
+
+1. **Batch Rendering**: Collect all mutations before updating the actual display
+2. **Template Caching**: Cache compiled templates for fast instantiation
+3. **Incremental Updates**: Only update what changed, not the entire tree
+4. **Event Deduplication**: Coalesce multiple events before processing
+5. **Memory Management**: Clean up removed nodes to prevent leaks
+
+## Testing Your Renderer
+
+Use `NoOpMutations` for testing without a real renderer:
+
+```rust
+use dioxus_core::NoOpMutations;
+
+#[test]
+fn test_component() {
+    let mut dom = VirtualDom::new(app);
+    dom.rebuild(&mut NoOpMutations);
+    // Mutations are ignored, useful for testing logic
+}
+```
+
+**Reference**: `packages/core/src/mutations.rs:383-423`
+
+## Additional Resources
+
+- Web Renderer: `packages/web/src/dom.rs`
+- Desktop Renderer: `packages/desktop/src/` (uses webview)
+- Native Renderer: `packages/native/src/` (GPU-based)
+- Liveview Renderer: `packages/liveview/src/` (WebSocket streaming)

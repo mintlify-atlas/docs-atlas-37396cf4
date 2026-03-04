@@ -1,0 +1,173 @@
+---
+title: 'use_resource'
+description: 'Create an async task that automatically re-runs when dependencies change'
+keywords: ['resource', 'async', 'future', 'loading', 'hook']
+---
+
+# use_resource
+
+Creates a reactive async task with automatic dependency tracking. The future automatically re-runs when any reactive values read inside it change.
+
+## Signature
+
+```rust
+pub fn use_resource<T, F>(future: impl FnMut() -> F + 'static) -> Resource<T>
+where
+    T: 'static,
+    F: Future<Output = T> + 'static,
+```
+
+## Parameters
+
+<ParamField path="future" type="impl FnMut() -> F + 'static" required>
+  A function that returns a Future. This function is called immediately and re-runs whenever any reactive values (signals, memos, etc.) read inside it change. The future is automatically cancelled and restarted when dependencies change.
+</ParamField>
+
+## Type Parameters
+
+<ParamField path="T" type="type">
+  The output type of the async operation.
+</ParamField>
+
+<ParamField path="F" type="type">
+  The Future type returned by the function. Must resolve to type `T`.
+</ParamField>
+
+## Returns
+
+<ResponseField name="Resource<T>" type="Resource<T>">
+  A resource handle that provides access to the async task's state and result. The value is `None` while loading and `Some(T)` when complete.
+</ResponseField>
+
+## Description
+
+Resources are for async operations that need to react to state changes. Think of them as async memos - they compute a value asynchronously and automatically recompute when dependencies change.
+
+Key features:
+- **Automatic reloading**: The future re-runs when any reactive dependencies change
+- **State tracking**: Access loading, pending, and ready states
+- **Cancellation**: Previous futures are automatically cancelled when restarting
+- **Control**: Manually pause, resume, restart, or cancel the task
+
+<Info>
+  The resource value is `None` while the future is running and `Some(T)` when complete. This makes resources perfect for loading states.
+</Info>
+
+## Example
+
+Fetch data that reloads when a parameter changes:
+
+```rust
+use dioxus::prelude::*;
+
+fn App() -> Element {
+    let mut revision = use_signal(|| "main");
+    let resource = use_resource(move || async move {
+        // This re-runs whenever revision changes
+        reqwest::get(format!(
+            "https://api.github.com/repos/DioxusLabs/dioxus/commits/{}",
+            revision()
+        ))
+        .await
+        .ok()?
+        .json::<serde_json::Value>()
+        .await
+        .ok()
+    });
+
+    rsx! {
+        select {
+            oninput: move |evt| revision.set(evt.value()),
+            option { value: "main", "main" }
+            option { value: "v0.4", "v0.4" }
+        }
+
+        match &*resource.read_unchecked() {
+            Some(Ok(data)) => rsx! { pre { "{data:#?}" } },
+            Some(Err(err)) => rsx! { "Error: {err}" },
+            None => rsx! { "Loading..." },
+        }
+    }
+}
+```
+
+## Resource methods
+
+### State control
+
+<ParamField path="restart()" type="fn(&mut self)">
+  Cancel the current future and start a new one.
+</ParamField>
+
+<ParamField path="cancel()" type="fn(&mut self)">
+  Cancel the future and stop it from running.
+</ParamField>
+
+<ParamField path="pause()" type="fn(&mut self)">
+  Temporarily pause the future.
+</ParamField>
+
+<ParamField path="resume()" type="fn(&mut self)">
+  Resume a paused future.
+</ParamField>
+
+<ParamField path="clear()" type="fn(&mut self)">
+  Clear the value without modifying the task.
+</ParamField>
+
+### State queries
+
+<ParamField path="pending()" type="fn(&self) -> bool">
+  Returns `true` if the future is currently running.
+</ParamField>
+
+<ParamField path="finished()" type="fn(&self) -> bool">
+  Returns `true` if the future has completed or been stopped.
+</ParamField>
+
+<ParamField path="state()" type="fn(&self) -> ReadSignal<UseResourceState>">
+  Get the current state: `Pending`, `Paused`, `Stopped`, or `Ready`.
+</ParamField>
+
+<ParamField path="value()" type="fn(&self) -> ReadSignal<Option<T>>">
+  Get a signal for the resource value.
+</ParamField>
+
+<ParamField path="suspend()" type="fn(&self) -> Result<MappedSignal<T>, RenderError>">
+  Suspend rendering until the resource is ready. Use with Suspense boundaries.
+</ParamField>
+
+## Example: Manual control
+
+```rust
+use dioxus::prelude::*;
+
+fn App() -> Element {
+    let mut resource = use_resource(move || async move {
+        tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
+        "Done!"
+    });
+
+    rsx! {
+        button { onclick: move |_| resource.restart(), "Restart" }
+        button { onclick: move |_| resource.cancel(), "Cancel" }
+        button { onclick: move |_| resource.pause(), "Pause" }
+        button { onclick: move |_| resource.resume(), "Resume" }
+
+        p {
+            match resource.state().cloned() {
+                UseResourceState::Pending => "Loading...",
+                UseResourceState::Paused => "Paused",
+                UseResourceState::Stopped => "Stopped",
+                UseResourceState::Ready => resource().unwrap_or("Error"),
+            }
+        }
+    }
+}
+```
+
+## Related
+
+- `use_memo` - Synchronous memoized computations
+- `use_coroutine` - Long-running async tasks with message passing
+- `use_effect` - Side effects without return values

@@ -1,0 +1,245 @@
+---
+title: Futures in Dioxus
+description: Learn how to work with async code and use_future hook in Dioxus
+---
+
+# Futures in Dioxus
+
+Dioxus provides excellent support for asynchronous programming, allowing you to run background tasks, fetch data, and handle long-running operations without blocking your UI.
+
+## Understanding `use_future`
+
+The `use_future` hook spawns a future that runs in the background. Unlike `use_resource`, it doesn't return a value - it's designed for side effects and background tasks.
+
+### Basic Usage
+
+```rust
+use dioxus::prelude::*;
+use std::time::Duration;
+
+fn app() -> Element {
+    let mut count = use_signal(|| 0);
+    let mut running = use_signal(|| true);
+
+    // Spawn an infinitely running background task
+    use_future(move || async move {
+        loop {
+            if running() {
+                count += 1;
+            }
+            tokio::time::sleep(Duration::from_millis(400)).await;
+        }
+    });
+
+    rsx! {
+        div {
+            h1 { "Current count: {count}" }
+            button { 
+                onclick: move |_| running.toggle(), 
+                "Start/Stop the count"
+            }
+            button { 
+                onclick: move |_| count.set(0), 
+                "Reset the count" 
+            }
+        }
+    }
+}
+```
+
+## Key Characteristics
+
+### Non-Reactive
+
+`use_future` is **non-reactive** - it runs once when the component is first rendered and continues until:
+- The future completes
+- The component is unmounted
+- You manually cancel it
+
+### Client-Only Execution
+
+Important: `use_future` **does not run on the server**. If you need server-side async execution, use `dioxus_core::spawn_isomorphic` directly.
+
+### Early Returns Pause Futures
+
+When a component returns early (before reaching the `use_future` hook), the future is automatically paused:
+
+```rust
+fn Child() -> Element {
+    let mut early_return = use_signal(|| false);
+
+    if early_return() {
+        return rsx! { 
+            button { 
+                onclick: move |_| early_return.toggle(), 
+                "Toggle" 
+            }
+        };
+    }
+
+    // This future is paused when early_return is true
+    use_future(move || async move {
+        loop {
+            tokio::time::sleep(Duration::from_millis(100)).await;
+            println!("Still running");
+        }
+    });
+
+    rsx! { div { "Child component" } }
+}
+```
+
+## Controlling Future Execution
+
+The `UseFuture` handle gives you control over the future's lifecycle:
+
+### Methods
+
+- **`restart()`** - Cancel the current future and spawn a new one
+- **`cancel()`** - Forcefully stop the future
+- **`pause()`** - Temporarily pause execution
+- **`resume()`** - Resume a paused future
+- **`finished()`** - Check if the future has completed
+- **`state()`** - Get the current state (Pending, Paused, Stopped, or Ready)
+
+```rust
+fn app() -> Element {
+    let mut count = use_signal(|| 0);
+    
+    let mut future = use_future(move || async move {
+        loop {
+            tokio::time::sleep(Duration::from_millis(100)).await;
+            count += 1;
+        }
+    });
+
+    rsx! {
+        div {
+            h1 { "Count: {count}" }
+            button { onclick: move |_| future.restart(), "Restart" }
+            button { onclick: move |_| future.pause(), "Pause" }
+            button { onclick: move |_| future.resume(), "Resume" }
+            button { onclick: move |_| future.cancel(), "Cancel" }
+        }
+    }
+}
+```
+
+## Future States
+
+A future can be in one of four states:
+
+- **Pending** - The future is currently running
+- **Paused** - The future has been temporarily paused
+- **Stopped** - The future has been forcefully cancelled
+- **Ready** - The future has completed
+
+```rust
+use dioxus::hooks::UseFutureState;
+
+match future.state()() {
+    UseFutureState::Pending => { /* Running */ },
+    UseFutureState::Paused => { /* Paused */ },
+    UseFutureState::Stopped => { /* Cancelled */ },
+    UseFutureState::Ready => { /* Completed */ },
+}
+```
+
+## Working with Streams
+
+You can use `use_future` with async streams to process data over time:
+
+```rust
+use futures_util::{Stream, StreamExt, stream};
+
+fn app() -> Element {
+    let mut count = use_signal(|| 0);
+
+    use_future(move || async move {
+        // Create a stream (could be from a network, file, etc.)
+        let mut stream = create_number_stream();
+
+        // Process each item from the stream
+        while let Some(value) = stream.next().await {
+            count.set(value);
+        }
+    });
+
+    rsx! {
+        h1 { "Current value: {count}" }
+    }
+}
+
+fn create_number_stream() -> impl Stream<Item = i32> {
+    stream::iter(0..100).then(|n| async move {
+        tokio::time::sleep(Duration::from_secs(1)).await;
+        n
+    })
+}
+```
+
+## Async Event Handlers
+
+You can also run async code directly in event handlers:
+
+```rust
+rsx! {
+    button {
+        onclick: move |_| async move {
+            tokio::time::sleep(Duration::from_millis(500)).await;
+            println!("Button clicked!");
+        },
+        "Click me"
+    }
+}
+```
+
+Note: If the event fires multiple times, each async handler will spawn independently.
+
+## Comparing with `use_effect`
+
+`use_effect` is reactive and reruns when dependencies change:
+
+```rust
+fn app() -> Element {
+    let mut count = use_signal(|| 0);
+
+    // Runs once on mount, and whenever count changes
+    use_effect(move || {
+        println!("Count is now: {}", count());
+        
+        spawn(async move {
+            // Async work here
+        });
+    });
+
+    rsx! { /* ... */ }
+}
+```
+
+## When to Use `use_future`
+
+Use `use_future` when you need to:
+- Run a long-lived background task
+- Start a task once on component mount
+- Control task execution (pause/resume/cancel)
+- Work with streams or continuous data sources
+
+**Don't use `use_future` when:**
+- You need to return and display data (use `use_resource` instead)
+- You need reactivity to signals (use `use_effect` instead)
+- You need server-side rendering (use `use_resource` or server functions)
+
+## Best Practices
+
+1. **Cleanup** - Futures are automatically cancelled when the component unmounts
+2. **Error Handling** - Handle errors within your async block
+3. **Signal Updates** - Use signals to communicate results back to the UI
+4. **Avoid Blocking** - Never block the async runtime; use `.await` properly
+5. **Resource Cleanup** - Clean up resources before the future exits
+
+## Next Steps
+
+- Learn about [use_resource](/async/use-resource) for data fetching
+- Understand [Suspense](/async/suspense) for loading states
+- Handle [Errors](/async/error-handling) in async code

@@ -1,0 +1,548 @@
+---
+title: Conditional Rendering
+description: Learn how to conditionally render elements in Dioxus based on state and logic
+---
+
+Conditional rendering allows you to display different content based on your application's state. Dioxus provides several patterns for conditional rendering.
+
+## If/Else in RSX
+
+### Basic If/Else
+
+Use standard Rust `if/else` expressions directly in RSX:
+
+```rust
+use dioxus::prelude::*;
+
+fn app() -> Element {
+    let mut is_logged_in = use_signal(|| false);
+    
+    rsx! {
+        if is_logged_in() {
+            h1 { "Welcome back!" }
+        } else {
+            h1 { "Please log in" }
+        }
+    }
+}
+```
+
+### If/Else with Elements
+
+Both branches must return the same type (`Element`):
+
+```rust
+fn app() -> Element {
+    let mut has_data = use_signal(|| true);
+    
+    rsx! {
+        div {
+            if has_data() {
+                div { class: "content",
+                    h2 { "Data Loaded" }
+                    p { "Here is your data" }
+                }
+            } else {
+                div { class: "loading",
+                    p { "Loading..." }
+                }
+            }
+        }
+    }
+}
+```
+
+## Unterminated If Statements
+
+### Optional Rendering
+
+For rendering something or nothing, use an unterminated `if`:
+
+```rust
+fn app() -> Element {
+    let mut show_message = use_signal(|| true);
+    
+    rsx! {
+        div {
+            h1 { "My App" }
+            
+            // Only render if condition is true
+            if show_message() {
+                div { class: "alert",
+                    "This is an important message!"
+                }
+            }
+            
+            button {
+                onclick: move |_| show_message.toggle(),
+                "Toggle Message"
+            }
+        }
+    }
+}
+```
+
+### Multiple Conditions
+
+Chain multiple unterminated `if` statements:
+
+```rust
+fn app() -> Element {
+    let mut count = use_signal(|| 0);
+    
+    rsx! {
+        div {
+            h1 { "Count: {count}" }
+            
+            if count() > 10 {
+                p { class: "warning", "Count is getting high!" }
+            }
+            
+            if count() > 20 {
+                p { class: "error", "Count is too high!" }
+            }
+            
+            if count() == 0 {
+                p { "Click the button to start counting" }
+            }
+            
+            button {
+                onclick: move |_| count += 1,
+                "Increment"
+            }
+        }
+    }
+}
+```
+
+## Match Expressions
+
+### Matching on Enums
+
+```rust
+#[derive(Clone, PartialEq)]
+enum PageState {
+    Loading,
+    Success(String),
+    Error(String),
+}
+
+fn app() -> Element {
+    let state = use_signal(|| PageState::Loading);
+    
+    rsx! {
+        div {
+            match state() {
+                PageState::Loading => rsx! {
+                    div { class: "spinner", "Loading..." }
+                },
+                PageState::Success(data) => rsx! {
+                    div { class: "content",
+                        h1 { "Success!" }
+                        p { "{data}" }
+                    }
+                },
+                PageState::Error(error) => rsx! {
+                    div { class: "error",
+                        h1 { "Error" }
+                        p { "{error}" }
+                    }
+                }
+            }
+        }
+    }
+}
+```
+
+### Matching on Values
+
+```rust
+fn app() -> Element {
+    let mut status = use_signal(|| 1);
+    
+    rsx! {
+        div {
+            match status() {
+                0 => rsx! { p { "Inactive" } },
+                1 => rsx! { p { "Active" } },
+                2 => rsx! { p { "Pending" } },
+                _ => rsx! { p { "Unknown" } },
+            }
+        }
+    }
+}
+```
+
+## Working with Options
+
+### Rendering Optional Values
+
+```rust
+fn app() -> Element {
+    let mut user_name = use_signal(|| None::<String>);
+    
+    rsx! {
+        div {
+            if let Some(name) = user_name() {
+                h1 { "Hello, {name}!" }
+            } else {
+                h1 { "Hello, Guest!" }
+            }
+            
+            button {
+                onclick: move |_| user_name.set(Some("Alice".to_string())),
+                "Log In"
+            }
+        }
+    }
+}
+```
+
+### Using Option Methods
+
+```rust
+fn app() -> Element {
+    let mut data = use_signal(|| Some("Hello".to_string()));
+    
+    rsx! {
+        div {
+            // Render the Option directly (Some renders the value, None renders nothing)
+            {data().map(|text| rsx! { p { "{text}" } })}
+            
+            // Or use if let
+            if let Some(text) = data() {
+                p { "Data: {text}" }
+            }
+        }
+    }
+}
+```
+
+### Unwrapping with Default
+
+```rust
+fn app() -> Element {
+    let mut count = use_signal(|| None::<i32>);
+    
+    rsx! {
+        div {
+            p { "Count: {count().unwrap_or(0)}" }
+            
+            button {
+                onclick: move |_| count.set(Some(count().unwrap_or(0) + 1)),
+                "Increment"
+            }
+        }
+    }
+}
+```
+
+## Boolean Expressions
+
+### Using .then() and .then_some()
+
+```rust
+fn app() -> Element {
+    let mut show = use_signal(|| true);
+    
+    rsx! {
+        div {
+            // Using .then() with a closure
+            {show().then(|| rsx! { p { "Visible!" } })}
+            
+            // Using .then_some() with a value
+            {show().then_some(rsx! { p { "Also visible!" } })}
+        }
+    }
+}
+```
+
+### Short-Circuit Evaluation
+
+```rust
+fn app() -> Element {
+    let mut is_admin = use_signal(|| false);
+    let mut is_logged_in = use_signal(|| true);
+    
+    rsx! {
+        div {
+            // Both conditions must be true
+            if is_logged_in() && is_admin() {
+                div { "Admin Panel" }
+            }
+            
+            // Either condition can be true
+            if is_logged_in() || is_admin() {
+                div { "Welcome" }
+            }
+        }
+    }
+}
+```
+
+## Conditional Attributes
+
+### Conditional Classes
+
+```rust
+fn app() -> Element {
+    let mut is_active = use_signal(|| false);
+    let mut has_error = use_signal(|| false);
+    
+    rsx! {
+        div {
+            class: "button",
+            class: if is_active() { "active" },
+            class: if has_error() { "error" },
+            
+            onclick: move |_| is_active.toggle(),
+            "Toggle"
+        }
+    }
+}
+```
+
+### Conditional Styles
+
+```rust
+fn app() -> Element {
+    let mut is_dark = use_signal(|| false);
+    
+    rsx! {
+        div {
+            background_color: if is_dark() { "#333" } else { "#fff" },
+            color: if is_dark() { "#fff" } else { "#333" },
+            padding: "20px",
+            
+            "Theme: {if is_dark() { 'Dark' } else { 'Light' }}"
+            
+            button {
+                onclick: move |_| is_dark.toggle(),
+                "Toggle Theme"
+            }
+        }
+    }
+}
+```
+
+### Optional Attributes
+
+```rust
+fn app() -> Element {
+    let mut is_disabled = use_signal(|| false);
+    
+    rsx! {
+        button {
+            // Attribute is only set when condition is true
+            disabled: if is_disabled() { true },
+            "Submit"
+        }
+        
+        // Or more simply:
+        button {
+            disabled: is_disabled(),
+            "Submit"
+        }
+    }
+}
+```
+
+## Complex Conditional Logic
+
+### Nested Conditions
+
+```rust
+#[derive(Clone, PartialEq)]
+enum UserRole {
+    Guest,
+    User,
+    Admin,
+}
+
+fn app() -> Element {
+    let role = use_signal(|| UserRole::Guest);
+    let mut is_logged_in = use_signal(|| false);
+    
+    rsx! {
+        div {
+            if is_logged_in() {
+                match role() {
+                    UserRole::Admin => rsx! {
+                        div { "Admin Dashboard" }
+                    },
+                    UserRole::User => rsx! {
+                        div { "User Dashboard" }
+                    },
+                    UserRole::Guest => rsx! {
+                        div { "Limited Access" }
+                    },
+                }
+            } else {
+                div { "Please log in" }
+            }
+        }
+    }
+}
+```
+
+### Conditional Components
+
+```rust
+#[component]
+fn AdminPanel() -> Element {
+    rsx! { div { "Admin Panel" } }
+}
+
+#[component]
+fn UserPanel() -> Element {
+    rsx! { div { "User Panel" } }
+}
+
+fn app() -> Element {
+    let mut is_admin = use_signal(|| false);
+    
+    rsx! {
+        div {
+            if is_admin() {
+                AdminPanel {}
+            } else {
+                UserPanel {}
+            }
+        }
+    }
+}
+```
+
+## Performance Considerations
+
+### Memoization
+
+For expensive conditional logic, use memoization:
+
+```rust
+fn app() -> Element {
+    let mut data = use_signal(|| vec![1, 2, 3, 4, 5]);
+    
+    // Memoize the expensive computation
+    let should_show = use_memo(move || {
+        data.read().iter().sum::<i32>() > 10
+    });
+    
+    rsx! {
+        div {
+            if should_show() {
+                p { "Sum is greater than 10" }
+            }
+        }
+    }
+}
+```
+
+### Avoiding Re-renders
+
+Keep conditional logic simple to avoid unnecessary re-renders:
+
+```rust
+// Good: Simple boolean check
+if is_visible() {
+    div { "Content" }
+}
+
+// Less ideal: Complex computation in render
+if expensive_calculation() {
+    div { "Content" }
+}
+
+// Better: Memoize the result
+let should_show = use_memo(move || expensive_calculation());
+if should_show() {
+    div { "Content" }
+}
+```
+
+## Common Patterns
+
+### Loading States
+
+```rust
+fn app() -> Element {
+    let mut is_loading = use_signal(|| false);
+    let mut data = use_signal(|| None::<String>);
+    
+    rsx! {
+        div {
+            if is_loading() {
+                div { class: "spinner", "Loading..." }
+            } else if let Some(content) = data() {
+                div { class: "content", "{content}" }
+            } else {
+                button {
+                    onclick: move |_| {
+                        is_loading.set(true);
+                        // Load data...
+                    },
+                    "Load Data"
+                }
+            }
+        }
+    }
+}
+```
+
+### Error States
+
+```rust
+fn app() -> Element {
+    let mut error = use_signal(|| None::<String>);
+    
+    rsx! {
+        div {
+            if let Some(err) = error() {
+                div { class: "error-banner",
+                    p { "Error: {err}" }
+                    button {
+                        onclick: move |_| error.set(None),
+                        "Dismiss"
+                    }
+                }
+            }
+            
+            // Rest of your UI
+        }
+    }
+}
+```
+
+### Toggle Patterns
+
+```rust
+fn app() -> Element {
+    let mut expanded = use_signal(|| false);
+    
+    rsx! {
+        div {
+            button {
+                onclick: move |_| expanded.toggle(),
+                if expanded() { "Hide" } else { "Show" }
+            }
+            
+            if expanded() {
+                div { class: "expanded-content",
+                    p { "This content is collapsible" }
+                }
+            }
+        }
+    }
+}
+```
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Lists" icon="list" href="./lists">
+    Learn how to render dynamic lists
+  </Card>
+  <Card title="Signals" icon="signal" href="../state/signals">
+    Master reactive state management
+  </Card>
+</CardGroup>

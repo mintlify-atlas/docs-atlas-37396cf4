@@ -1,0 +1,354 @@
+---
+title: Web Platform
+description: Build WebAssembly applications that run in the browser
+---
+
+The Dioxus web renderer enables you to build high-performance web applications using Rust and WebAssembly. It leverages web-sys for DOM manipulation and includes a custom binary protocol for efficient updates.
+
+## Quick Start
+
+Add the web dependency to your `Cargo.toml`:
+
+```toml
+[dependencies]
+dioxus = "0.6"
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+dioxus-web = "0.6"
+```
+
+Create your app:
+
+```rust
+use dioxus::prelude::*;
+
+fn main() {
+    dioxus::launch(App);
+}
+
+#[component]
+fn App() -> Element {
+    let mut count = use_signal(|| 0);
+    
+    rsx! {
+        h1 { "Counter: {count}" }
+        button { onclick: move |_| count += 1, "Increment" }
+    }
+}
+```
+
+Build and serve:
+
+```bash
+dx serve --platform web
+```
+
+## Architecture
+
+### WebAssembly Rendering
+
+The web renderer uses a hybrid approach:
+- **Sledgehammer**: A custom binary protocol for efficient DOM mutations
+- **web-sys**: Direct bindings to browser APIs
+- **Template caching**: Templates are serialized once and cloned on demand
+
+The renderer maintains a WebsysDom structure:
+
+```rust
+WebsysDom
+├── interpreter: Sledgehammer JS interpreter
+├── document: web_sys::Document reference
+├── root: Root DOM node
+├── templates: HashMap<Template, u16>
+└── runtime: Rc<Runtime>
+```
+
+### Bundle Size
+
+The Dioxus web runtime is approximately 60KB gzipped, making it competitive with other modern frameworks.
+
+## Configuration
+
+Customize the web renderer with the `Config` struct:
+
+```rust
+use dioxus::prelude::*;
+use dioxus_web::Config;
+
+fn main() {
+    dioxus::LaunchBuilder::new()
+        .with_cfg(
+            Config::new()
+                .rootname("app")
+                .hydrate(false)
+        )
+        .launch(App);
+}
+```
+
+### Configuration Options
+
+- **rootname**: Set the ID of the root element (default: "main")
+- **rootelement**: Use a specific DOM element as root
+- **hydrate**: Enable server-side rendering hydration
+- **history**: Configure the history provider (WebHistory or HashHistory)
+
+## Browser APIs
+
+### Accessing web-sys
+
+You can access browser APIs directly using web-sys:
+
+```rust
+use dioxus::prelude::*;
+use web_sys::window;
+
+#[component]
+fn BrowserInfo() -> Element {
+    let user_agent = window()
+        .and_then(|w| w.navigator().user_agent().ok())
+        .unwrap_or_default();
+    
+    rsx! {
+        p { "User Agent: {user_agent}" }
+    }
+}
+```
+
+### Local Storage
+
+```rust
+use dioxus::prelude::*;
+use web_sys::window;
+
+#[component]
+fn PersistentCounter() -> Element {
+    let mut count = use_signal(|| {
+        let storage = window()
+            .and_then(|w| w.local_storage().ok())
+            .flatten()
+            .and_then(|s| s.get_item("count").ok())
+            .flatten()
+            .and_then(|v| v.parse::<i32>().ok())
+            .unwrap_or(0);
+        storage
+    });
+    
+    let save = move || {
+        if let Some(storage) = window()
+            .and_then(|w| w.local_storage().ok())
+            .flatten()
+        {
+            _ = storage.set_item("count", &count().to_string());
+        }
+    };
+    
+    rsx! {
+        button { 
+            onclick: move |_| {
+                count += 1;
+                save();
+            },
+            "Count: {count}"
+        }
+    }
+}
+```
+
+### Web Workers
+
+Use web workers for background processing:
+
+```rust
+use dioxus::prelude::*;
+use web_sys::{Worker, MessageEvent};
+use wasm_bindgen::prelude::*;
+
+#[component]
+fn WorkerExample() -> Element {
+    let mut result = use_signal(|| String::new());
+    
+    let start_worker = move |_| {
+        spawn(async move {
+            if let Ok(worker) = Worker::new("./worker.js") {
+                let callback = Closure::wrap(Box::new(move |e: MessageEvent| {
+                    if let Ok(msg) = e.data().dyn_into::<js_sys::JsString>() {
+                        result.set(String::from(msg));
+                    }
+                }) as Box<dyn FnMut(_)>);
+                
+                worker.set_onmessage(Some(callback.as_ref().unchecked_ref()));
+                callback.forget();
+                
+                _ = worker.post_message(&"start".into());
+            }
+        });
+    };
+    
+    rsx! {
+        button { onclick: start_worker, "Start Worker" }
+        p { "{result}" }
+    }
+}
+```
+
+## Server-Side Rendering
+
+The web renderer supports hydration from server-rendered HTML:
+
+```rust
+use dioxus_web::Config;
+
+fn main() {
+    dioxus::LaunchBuilder::new()
+        .with_cfg(Config::new().hydrate(true))
+        .launch(App);
+}
+```
+
+See the [Fullstack](/fullstack) documentation for complete SSR setup.
+
+## Hot Reloading
+
+The web renderer includes instant hot-reloading via the Dioxus CLI:
+
+```bash
+dx serve --hot-reload
+```
+
+Changes to your RSX are applied instantly without losing application state.
+
+## Event Handling
+
+### Event Delegation
+
+The web renderer uses event delegation for efficiency:
+- Single listener on the root element
+- Events bubble up and are matched by `data-dioxus-id`
+- Supports all standard DOM events
+
+```rust
+#[component]
+fn Events() -> Element {
+    rsx! {
+        button { 
+            onclick: |_| println!("Clicked!"),
+            onmouseenter: |_| println!("Mouse entered"),
+            onmouseleave: |_| println!("Mouse left"),
+            "Hover me"
+        }
+    }
+}
+```
+
+### Custom Events
+
+Access raw web events when needed:
+
+```rust
+use dioxus::prelude::*;
+use dioxus_web::events::*;
+
+#[component]
+fn CustomEvent() -> Element {
+    rsx! {
+        input {
+            oninput: |evt: FormEvent| {
+                println!("Input value: {}", evt.value());
+            }
+        }
+    }
+}
+```
+
+## Performance Tips
+
+### 1. Use Signals for Fine-Grained Reactivity
+
+```rust
+let mut count = use_signal(|| 0);
+
+// Only this button re-renders when count changes
+rsx! { button { "{count}" } }
+```
+
+### 2. Memoize Expensive Computations
+
+```rust
+let expensive_value = use_memo(move || {
+    // Heavy computation here
+    data().iter().sum()
+});
+```
+
+### 3. Lazy Load Components
+
+Use dynamic imports for code splitting:
+
+```rust
+let component = use_future(|| async move {
+    // Load component asynchronously
+});
+```
+
+## Deployment
+
+### Building for Production
+
+```bash
+dx build --release --platform web
+```
+
+This creates optimized WASM and JavaScript in the `dist/` directory.
+
+### Hosting
+
+Serve the built files with any static file server:
+
+```bash
+cd dist
+python -m http.server 8000
+```
+
+Or deploy to:
+- GitHub Pages
+- Netlify
+- Vercel
+- Cloudflare Pages
+- AWS S3 + CloudFront
+
+## Debugging
+
+### Console Logging
+
+```rust
+use wasm_bindgen::prelude::*;
+
+#[wasm_bindgen]
+extern "C" {
+    #[wasm_bindgen(js_namespace = console)]
+    fn log(s: &str);
+}
+
+log("Debug message");
+```
+
+Or use the `tracing` crate with `tracing-wasm`:
+
+```rust
+use tracing::info;
+
+info!("Application started");
+```
+
+### Browser DevTools
+
+- Enable source maps in development
+- Use browser debugger with Rust source
+- Inspect WASM memory and performance
+
+## Next Steps
+
+- [Desktop Platform](/platforms/desktop) - Build native desktop apps
+- [Router](/router) - Add navigation to your web app
+- [Fullstack](/fullstack) - Combine client and server

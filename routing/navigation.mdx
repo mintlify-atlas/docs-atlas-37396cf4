@@ -1,0 +1,578 @@
+---
+title: Navigation
+description: Navigate between routes using Link component and programmatic methods
+---
+
+Dioxus provides two ways to navigate between routes: the declarative `Link` component and programmatic navigation using the `Navigator` API.
+
+## Link Component
+
+The `Link` component creates clickable navigation elements. Unlike regular HTML `<a>` tags, `Link` components prevent full page reloads and use client-side routing.
+
+### Basic Usage
+
+```rust
+use dioxus::prelude::*;
+
+#[component]
+fn Navigation() -> Element {
+    rsx! {
+        Link { to: Route::Home {}, "Home" }
+        Link { to: Route::About {}, "About" }
+    }
+}
+```
+
+The `to` prop accepts any route from your `Route` enum:
+
+```rust
+#[derive(Routable, Clone, PartialEq)]
+enum Route {
+    #[route("/")]
+    Home {},
+    #[route("/blog/:id")]
+    Blog { id: String },
+}
+
+rsx! {
+    Link {
+        to: Route::Blog { id: "hello-world".to_string() },
+        "Read Blog Post"
+    }
+}
+```
+
+### Link Props
+
+#### Active Class
+
+Highlight the active link with a CSS class:
+
+```rust
+rsx! {
+    Link {
+        to: Route::Home {},
+        active_class: "active",
+        class: "nav-link",
+        "Home"
+    }
+}
+```
+
+When the current route matches the link's `to` prop, the `active_class` is added:
+
+```html
+<!-- When on home page -->
+<a href="/" class="nav-link active">Home</a>
+
+<!-- When on other page -->
+<a href="/" class="nav-link">Home</a>
+```
+
+#### Custom Classes
+
+Add CSS classes to style links:
+
+```rust
+rsx! {
+    Link {
+        to: Route::Home {},
+        class: "btn btn-primary",
+        "Go Home"
+    }
+}
+```
+
+#### New Tab
+
+Open links in a new tab:
+
+```rust
+rsx! {
+    Link {
+        to: Route::About {},
+        new_tab: true,
+        "About (opens in new tab)"
+    }
+}
+```
+
+#### Click Handlers
+
+Handle clicks before navigation:
+
+```rust
+rsx! {
+    Link {
+        to: Route::Blog { id: "post-1".to_string() },
+        onclick: move |event| {
+            println!("Navigating to blog post");
+            // Navigation happens after this handler
+        },
+        "Read Post"
+    }
+}
+```
+
+Prevent default navigation with `onclick_only`:
+
+```rust
+rsx! {
+    Link {
+        to: Route::Home {},
+        onclick_only: true,
+        onclick: move |event| {
+            println!("Link clicked, but no navigation");
+            // Do custom logic without navigating
+        },
+        "Custom Handler"
+    }
+}
+```
+
+#### Rel Attribute
+
+Set the HTML `rel` attribute:
+
+```rust
+rsx! {
+    Link {
+        to: Route::External,
+        rel: "noopener noreferrer",
+        "External Site"
+    }
+}
+```
+
+<Note>
+  For external URLs, `rel="noopener noreferrer"` is set automatically.
+</Note>
+
+### External Links
+
+Links automatically detect external URLs:
+
+```rust
+rsx! {
+    // External link (opens in browser)
+    Link {
+        to: "https://dioxuslabs.com",
+        "Dioxus Website"
+    }
+    
+    // Internal link (client-side routing)
+    Link {
+        to: Route::Home {},
+        "Home Page"
+    }
+}
+```
+
+External links:
+- Use regular browser navigation (full page load)
+- Don't trigger router history
+- Get `rel="noopener noreferrer"` by default
+
+### Styling Active Links
+
+Create a navigation menu with active state:
+
+```rust
+#[component]
+fn NavBar() -> Element {
+    rsx! {
+        nav { class: "navbar",
+            Link {
+                to: Route::Home {},
+                class: "nav-link",
+                active_class: "active",
+                "Home"
+            }
+            Link {
+                to: Route::About {},
+                class: "nav-link",
+                active_class: "active",
+                "About"
+            }
+            Link {
+                to: Route::Contact {},
+                class: "nav-link",
+                active_class: "active",
+                "Contact"
+            }
+        }
+    }
+}
+```
+
+With CSS:
+
+```css
+.nav-link {
+    color: #666;
+    text-decoration: none;
+}
+
+.nav-link.active {
+    color: #000;
+    font-weight: bold;
+    border-bottom: 2px solid #000;
+}
+```
+
+## Programmatic Navigation
+
+Use the `use_navigator()` hook for navigation in event handlers or effects.
+
+### Basic Navigation
+
+```rust
+use dioxus::prelude::*;
+
+#[component]
+fn LoginButton() -> Element {
+    let nav = use_navigator();
+    
+    rsx! {
+        button {
+            onclick: move |_| {
+                // Perform login logic...
+                nav.push(Route::Dashboard {});
+            },
+            "Login"
+        }
+    }
+}
+```
+
+### Navigator Methods
+
+#### push()
+
+Navigate to a new route, adding to history:
+
+```rust
+let nav = use_navigator();
+
+// Navigate to home
+nav.push(Route::Home {});
+
+// Navigate with parameters
+nav.push(Route::Blog { id: "post-1".to_string() });
+```
+
+The user can press the back button to return to the previous page.
+
+#### replace()
+
+Navigate without adding to history:
+
+```rust
+let nav = use_navigator();
+
+// Replace current route (can't go back)
+nav.replace(Route::Home {});
+```
+
+Useful for:
+- Redirects after form submission
+- Login/logout flows
+- Preventing back button to auth pages
+
+```rust
+#[component]
+fn LoginForm() -> Element {
+    let nav = use_navigator();
+    let mut username = use_signal(|| String::new());
+    
+    rsx! {
+        form {
+            onsubmit: move |_| {
+                // Login user...
+                // Replace login page so back button doesn't return here
+                nav.replace(Route::Dashboard {});
+            },
+            input {
+                value: "{username}",
+                oninput: move |e| username.set(e.value())
+            }
+            button { "Login" }
+        }
+    }
+}
+```
+
+#### go_back()
+
+Go to the previous page:
+
+```rust
+let nav = use_navigator();
+
+rsx! {
+    button {
+        onclick: move |_| nav.go_back(),
+        "Back"
+    }
+}
+```
+
+#### go_forward()
+
+Go to the next page (if user went back):
+
+```rust
+let nav = use_navigator();
+
+rsx! {
+    button {
+        onclick: move |_| nav.go_forward(),
+        "Forward"
+    }
+}
+```
+
+#### can_go_back() / can_go_forward()
+
+Check if navigation is possible:
+
+```rust
+let nav = use_navigator();
+
+rsx! {
+    button {
+        disabled: !nav.can_go_back(),
+        onclick: move |_| nav.go_back(),
+        "Back"
+    }
+    button {
+        disabled: !nav.can_go_forward(),
+        onclick: move |_| nav.go_forward(),
+        "Forward"
+    }
+}
+```
+
+### Navigation in Effects
+
+Navigate based on state changes:
+
+```rust
+#[component]
+fn ProtectedPage() -> Element {
+    let nav = use_navigator();
+    let user = use_context::<Signal<Option<User>>>();
+    
+    use_effect(move || {
+        // Redirect if not logged in
+        if user.read().is_none() {
+            nav.replace(Route::Login {});
+        }
+    });
+    
+    rsx! { /* protected content */ }
+}
+```
+
+### External URLs
+
+Navigate to external URLs:
+
+```rust
+let nav = use_navigator();
+
+rsx! {
+    button {
+        onclick: move |_| {
+            nav.push(NavigationTarget::External(
+                "https://dioxuslabs.com".to_string()
+            ));
+        },
+        "Visit Dioxus"
+    }
+}
+```
+
+<Note>
+  For external URLs in buttons, you can also use a regular `Link` component.
+</Note>
+
+## History Buttons
+
+Dioxus provides pre-built back/forward button components:
+
+```rust
+use dioxus::prelude::*;
+
+rsx! {
+    nav {
+        GoBackButton { "← Back" }
+        GoForwardButton { "Forward →" }
+    }
+}
+```
+
+These components automatically handle disabled states when navigation isn't possible.
+
+## Navigation Patterns
+
+### Redirect After Form Submission
+
+```rust
+#[component]
+fn CreatePost() -> Element {
+    let nav = use_navigator();
+    let mut title = use_signal(|| String::new());
+    
+    rsx! {
+        form {
+            onsubmit: move |_| {
+                let post_id = create_post(title());
+                nav.replace(Route::BlogPost { id: post_id });
+            },
+            input {
+                value: "{title}",
+                oninput: move |e| title.set(e.value())
+            }
+            button { "Create Post" }
+        }
+    }
+}
+```
+
+### Conditional Navigation
+
+```rust
+#[component]
+fn DeleteButton(id: String) -> Element {
+    let nav = use_navigator();
+    
+    rsx! {
+        button {
+            onclick: move |_| {
+                if confirm("Delete this post?") {
+                    delete_post(&id);
+                    nav.push(Route::BlogList {});
+                }
+            },
+            "Delete"
+        }
+    }
+}
+```
+
+### Navigate with Query Parameters
+
+```rust
+#[derive(Routable, Clone, PartialEq)]
+enum Route {
+    #[route("/search?:q")]
+    Search { q: String },
+}
+
+let nav = use_navigator();
+
+rsx! {
+    button {
+        onclick: move |_| {
+            nav.push(Route::Search { q: "dioxus".to_string() });
+        },
+        "Search for 'dioxus'"
+    }
+}
+```
+
+### Breadcrumb Navigation
+
+```rust
+#[component]
+fn Breadcrumbs() -> Element {
+    let route = use_route::<Route>();
+    
+    rsx! {
+        nav { class: "breadcrumbs",
+            Link { to: Route::Home {}, "Home" }
+            " / "
+            if let Route::Blog { .. } = route {
+                Link { to: Route::BlogList {}, "Blog" }
+                " / Post"
+            }
+        }
+    }
+}
+```
+
+## Getting Current Route
+
+Use `use_route()` to access the current route:
+
+```rust
+#[component]
+fn CurrentPath() -> Element {
+    let route = use_route::<Route>();
+    
+    rsx! {
+        p { "Current route: {route:?}" }
+    }
+}
+```
+
+This is useful for:
+- Conditional rendering based on route
+- Extracting route parameters
+- Custom active link styling
+
+## Best Practices
+
+1. **Use Link for most navigation** - It's declarative and handles edge cases
+2. **Use Navigator for programmatic needs** - Form submissions, redirects, effects
+3. **Use replace() for redirects** - Prevents back button issues
+4. **Check can_go_back()** - Before showing back buttons
+5. **Use external URLs sparingly** - Keep users in your app when possible
+
+## Common Patterns
+
+### Navigation Menu
+
+```rust
+#[component]
+fn NavMenu() -> Element {
+    rsx! {
+        nav {
+            Link {
+                to: Route::Home {},
+                active_class: "active",
+                "Home"
+            }
+            Link {
+                to: Route::BlogList {},
+                active_class: "active",
+                "Blog"
+            }
+            Link {
+                to: Route::About {},
+                active_class: "active",
+                "About"
+            }
+        }
+    }
+}
+```
+
+### Conditional Redirect
+
+```rust
+#[component]
+fn Dashboard() -> Element {
+    let nav = use_navigator();
+    let is_logged_in = use_signal(|| false);
+    
+    use_effect(move || {
+        if !is_logged_in() {
+            nav.replace(Route::Login {});
+        }
+    });
+    
+    rsx! { /* dashboard content */ }
+}
+```

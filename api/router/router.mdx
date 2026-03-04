@@ -1,0 +1,162 @@
+---
+title: 'Router'
+description: 'Router component for managing application navigation'
+---
+
+## Overview
+
+The `Router` component is the foundation of navigation in Dioxus applications. It manages the routing state, history, and renders the current route based on the URL.
+
+## Basic Usage
+
+```rust
+use dioxus::prelude::*;
+
+#[derive(Clone, Routable, PartialEq)]
+enum Route {
+    #[route("/")]
+    Home {},
+    #[route("/about")]
+    About {},
+}
+
+#[component]
+fn App() -> Element {
+    rsx! {
+        Router::<Route> {}
+    }
+}
+
+#[component]
+fn Home() -> Element {
+    rsx! {
+        h1 { "Home" }
+    }
+}
+
+#[component]
+fn About() -> Element {
+    rsx! {
+        h1 { "About" }
+    }
+}
+```
+
+## Props
+
+### RouterProps
+
+The `Router` component accepts a generic `RouterProps<R>` type where `R` implements the `Routable` trait.
+
+<ParamField path="config" type="Callback<(), RouterConfig<R>>" default="RouterConfig::default()">
+  Optional configuration for the router's behavior. See [RouterConfig](#routerconfig) for details.
+</ParamField>
+
+## RouterConfig
+
+The `RouterConfig` struct provides global configuration options for the router. It follows the builder pattern.
+
+### Methods
+
+<ParamField path="on_update" type="impl Fn(GenericRouterContext<R>) -> Option<NavigationTarget<R>>">
+  A callback invoked after routing is updated but before components and hooks are updated.
+  
+  - Called no more than once per rerouting
+  - Not called if a navigation failure occurs
+  - Can return a `NavigationTarget` to replace the current location
+</ParamField>
+
+<ParamField path="failure_external_navigation" type="fn() -> Element">
+  A component to render when external navigation fails.
+  
+  Defaults to `FailureExternalNavigation` when the `html` feature is enabled.
+</ParamField>
+
+### Configuration Example
+
+```rust
+use dioxus::prelude::*;
+use dioxus_router::RouterConfig;
+
+#[derive(Clone, Routable, PartialEq)]
+enum Route {
+    #[route("/")]
+    Home {},
+}
+
+fn ExternalNavigationFailure() -> Element {
+    rsx! {
+        div { "Failed to navigate to external URL" }
+    }
+}
+
+#[component]
+fn App() -> Element {
+    let config = move |_| {
+        RouterConfig::<Route>::default()
+            .failure_external_navigation(ExternalNavigationFailure)
+            .on_update(|context| {
+                // Perform analytics or logging
+                None // Return None to continue normal navigation
+            })
+    };
+    
+    rsx! {
+        Router::<Route> { config }
+    }
+}
+
+#[component]
+fn Home() -> Element {
+    rsx! { h1 { "Home" } }
+}
+```
+
+## How It Works
+
+1. The `Router` component must wrap your entire application or the portion that needs routing
+2. It provides routing context to all descendant components
+3. It renders an `Outlet` component internally to display the current route
+4. When the URL changes, it automatically updates to render the matching route
+
+## Nested Routers
+
+You can create nested routing structures using layouts and the `Outlet` component:
+
+```rust
+#[derive(Clone, Routable, PartialEq)]
+enum Route {
+    #[nest("/blog")]
+        #[layout(BlogLayout)]
+            #[route("/")]
+            BlogList {},
+            
+            #[route("/:id")]
+            BlogPost { id: usize },
+        #[end_layout]
+    #[end_nest]
+    #[route("/")]
+    Home {},
+}
+
+#[component]
+fn BlogLayout() -> Element {
+    rsx! {
+        div {
+            h1 { "Blog" }
+            Outlet::<Route> {}
+        }
+    }
+}
+```
+
+## Related
+
+- [Route](/api/router/route) - Define route structures
+- [Link](/api/router/link) - Navigate between routes
+- [Navigator](/api/router/navigator) - Programmatic navigation
+- [Outlet](https://docs.rs/dioxus-router/latest/dioxus_router/components/fn.Outlet.html) - Render nested routes
+
+## Source
+
+View the source code: [packages/router/src/components/router.rs](https://github.com/DioxusLabs/dioxus/blob/main/packages/router/src/components/router.rs)

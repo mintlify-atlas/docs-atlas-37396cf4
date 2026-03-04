@@ -1,0 +1,268 @@
+---
+title: 'use_coroutine'
+description: 'Create a long-running async task with message-based communication'
+keywords: ['coroutine', 'async', 'channel', 'messages', 'hook']
+---
+
+# use_coroutine
+
+Create a long-running async task with an integrated message channel. Coroutines are automatically shared via context, allowing descendant components to send messages to the async event loop.
+
+## Signature
+
+```rust
+pub fn use_coroutine<M, G, F>(init: G) -> Coroutine<M>
+where
+    M: 'static,
+    G: FnMut(UnboundedReceiver<M>) -> F + 'static,
+    F: Future<Output = ()> + 'static,
+```
+
+## Parameters
+
+<ParamField path="init" type="G: FnMut(UnboundedReceiver<M>) -> F" required>
+  Initialization function that receives a message receiver and returns a Future. This function is called once when the component first renders.
+</ParamField>
+
+## Type Parameters
+
+<ParamField path="M" type="type" required>
+  The message type that can be sent to the coroutine. This is the type you'll send with `coroutine.send(msg)`.
+</ParamField>
+
+<ParamField path="F" type="Future<Output = ()>" required>
+  The Future type returned by the initialization function. Must resolve to `()`.
+</ParamField>
+
+## Returns
+
+<ResponseField name="Coroutine<M>" type="Coroutine<M>">
+  A coroutine handle that can send messages and control the task. The coroutine is automatically provided as context for descendant components.
+</ResponseField>
+
+## Description
+
+Coroutines are an upgraded form of `use_future` with an integrated channel system. They're ideal for:
+- Long-running background tasks
+- Centralized async event loops
+- State machines that respond to events
+- WebSocket handlers or network protocol implementations
+- Task coordination and synchronization
+
+The coroutine is automatically injected as context, so descendants can send messages without prop drilling.
+
+<Info>
+  You need to import `StreamExt` from `futures_util` to use `rx.next().await` on the message receiver.
+</Info>
+
+## Example
+
+Chat service that responds to commands:
+
+```rust
+use dioxus::prelude::*;
+use futures_util::StreamExt;
+
+enum ChatAction {
+    Connect,
+    Disconnect,
+    SendMessage(String),
+}
+
+fn App() -> Element {
+    let chat = use_coroutine(|mut rx: UnboundedReceiver<ChatAction>| async move {
+        while let Some(action) = rx.next().await {
+            match action {
+                ChatAction::Connect => {
+                    println!("Connecting to chat...");
+                    // Connection logic
+                }
+                ChatAction::Disconnect => {
+                    println!("Disconnecting...");
+                    break;
+                }
+                ChatAction::SendMessage(msg) => {
+                    println!("Sending: {}", msg);
+                    // Send message logic
+                }
+            }
+        }
+    });
+
+    rsx! {
+        button {
+            onclick: move |_| chat.send(ChatAction::Connect),
+            "Connect"
+        }
+        button {
+            onclick: move |_| chat.send(ChatAction::Disconnect),
+            "Disconnect"
+        }
+        ChatInput {}
+    }
+}
+
+#[component]
+fn ChatInput() -> Element {
+    // Access the coroutine from a child component via context
+    let chat = use_coroutine_handle::<ChatAction>();
+    let mut message = use_signal(|| String::new());
+
+    rsx! {
+        input {
+            value: "{message}",
+            oninput: move |evt| message.set(evt.value())
+        }
+        button {
+            onclick: move |_| {
+                chat.send(ChatAction::SendMessage(message()));
+                message.set(String::new());
+            },
+            "Send"
+        }
+    }
+}
+```
+
+## Coroutine methods
+
+<ParamField path="send(msg: M)" type="fn(&self, M)">
+  Send a message to the coroutine's channel. The message will be received by the `rx.next().await` in the coroutine's event loop.
+</ParamField>
+
+<ParamField path="tx()" type="fn(&self) -> UnboundedSender<M>">
+  Get a clone of the sender channel. Useful for passing to other tasks or libraries.
+</ParamField>
+
+<ParamField path="task()" type="fn(&self) -> Task">
+  Get the underlying task handle for advanced control.
+</ParamField>
+
+<ParamField path="restart()" type="fn(&mut self)">
+  Restart the coroutine, creating a new message channel and task.
+</ParamField>
+
+## Example: State machine
+
+Implement a download manager with state tracking:
+
+```rust
+use dioxus::prelude::*;
+use futures_util::StreamExt;
+
+enum DownloadMsg {
+    Start(String),
+    Cancel,
+    Pause,
+    Resume,
+}
+
+#[derive(Clone, Copy)]
+enum DownloadState {
+    Idle,
+    Downloading,
+    Paused,
+    Complete,
+    Error,
+}
+
+fn App() -> Element {
+    let mut state = use_signal(|| DownloadState::Idle);
+    let mut progress = use_signal(|| 0.0);
+
+    let downloader = use_coroutine(|mut rx| async move {
+        while let Some(msg) = rx.next().await {
+            match msg {
+                DownloadMsg::Start(url) => {
+                    state.set(DownloadState::Downloading);
+                    // Simulated download
+                    for i in 0..100 {
+                        tokio::time::sleep(tokio::time::Duration::from_millis(50)).await;
+                        progress.set(i as f64 / 100.0);
+                    }
+                    state.set(DownloadState::Complete);
+                }
+                DownloadMsg::Cancel => {
+                    state.set(DownloadState::Idle);
+                    progress.set(0.0);
+                }
+                DownloadMsg::Pause => {
+                    state.set(DownloadState::Paused);
+                }
+                DownloadMsg::Resume => {
+                    state.set(DownloadState::Downloading);
+                }
+            }
+        }
+    });
+
+    rsx! {
+        div {
+            p { "State: {state:?}" }
+            p { "Progress: {progress:.1}%" }
+
+            button {
+                onclick: move |_| downloader.send(DownloadMsg::Start("file.zip".into())),
+                disabled: !matches!(state(), DownloadState::Idle),
+                "Start Download"
+            }
+            button {
+                onclick: move |_| downloader.send(DownloadMsg::Pause),
+                disabled: !matches!(state(), DownloadState::Downloading),
+                "Pause"
+            }
+            button {
+                onclick: move |_| downloader.send(DownloadMsg::Resume),
+                disabled: !matches!(state(), DownloadState::Paused),
+                "Resume"
+            }
+            button {
+                onclick: move |_| downloader.send(DownloadMsg::Cancel),
+                "Cancel"
+            }
+        }
+    }
+}
+```
+
+## Access from descendants
+
+Use `use_coroutine_handle` to access a coroutine from child components:
+
+```rust
+pub fn use_coroutine_handle<M: 'static>() -> Coroutine<M>
+```
+
+Example:
+
+```rust
+#[component]
+fn ChildComponent() -> Element {
+    // Get the coroutine created by an ancestor
+    let coroutine = use_coroutine_handle::<MyMessage>();
+
+    rsx! {
+        button {
+            onclick: move |_| coroutine.send(MyMessage::Action),
+            "Send Message"
+        }
+    }
+}
+```
+
+## Use cases vs alternatives
+
+<Tip>
+  Choose the right async hook for your use case:
+</Tip>
+
+- **use_coroutine**: Long-running tasks with message-based control, state machines
+- **use_resource**: Loading data that depends on reactive state, automatically restarting tasks
+- **use_future**: Simple one-off async operations without reactive dependencies
+- **use_effect**: Sync or async side effects that run on every render or when deps change
+
+## Related
+
+- `use_resource` - Async tasks that return values and auto-reload
+- `use_context` - Accessing shared state
+- `use_future` - Simple async operations without channels

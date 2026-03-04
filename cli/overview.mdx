@@ -1,0 +1,202 @@
+---
+title: CLI Overview
+description: Introduction to the Dioxus CLI - the essential tooling for building, serving, and bundling Dioxus applications
+---
+
+The **Dioxus CLI** (`dx`) is the official command-line tool for building, developing, and deploying Dioxus applications. It provides a complete development workflow with hot-reload, asset management, multi-platform builds, and production bundling.
+
+## What is the Dioxus CLI?
+
+The Dioxus CLI handles the complex build orchestration required for cross-platform Rust applications:
+
+- **Development server** with hot-reload and hot-patching
+- **Asset management** including Tailwind CSS integration
+- **Multi-platform builds** for web (WASM), desktop, mobile (iOS/Android)
+- **Production bundling** with optimization and code splitting
+- **Project scaffolding** and code formatting
+
+Inspired by tools like `wasm-pack` and `webpack`, the CLI abstracts away platform-specific build complexity.
+
+## Installation
+
+### Stable Version (Recommended)
+
+Install the latest stable release from crates.io:
+
+```bash
+cargo install dioxus-cli
+```
+
+Verify installation:
+
+```bash
+dx --version
+```
+
+### Development Build
+
+For the latest features and bug fixes, install from the git repository:
+
+```bash
+cargo install --git https://github.com/DioxusLabs/dioxus dioxus-cli
+```
+
+<Warning>
+Development builds may contain unstable features and untested changes.
+</Warning>
+
+### From Local Source
+
+If you're contributing to the CLI or testing local modifications:
+
+```bash
+cd packages/cli
+cargo install --path .
+```
+
+## Quick Start
+
+Create a new Dioxus project:
+
+```bash
+dx new my-app
+cd my-app
+```
+
+Start the development server:
+
+```bash
+dx serve
+```
+
+This launches your app with:
+- Live hot-reload for instant UI updates
+- Development server at `http://localhost:8080`
+- Automatic browser opening
+- File watching for changes
+
+## Core Features
+
+### Hot-Reload System
+
+Dioxus CLI provides two complementary hot-reload mechanisms:
+
+**RSX Template Hot-Reload**: Instant UI updates when changing RSX templates without full recompilation. Changes to literal values, attributes, and component children are applied in milliseconds.
+
+**Subsecond Hot-Patching**: Full Rust code hot-reload through jump table indirection. Modified functions are recompiled and patched into the running application without restart.
+
+### Multi-Platform Support
+
+Build for any platform from a single codebase:
+
+```bash
+# Web (WASM)
+dx build --platform web
+
+# Desktop
+dx build --platform desktop
+
+# Mobile
+dx build --platform ios
+dx build --platform android
+```
+
+### Asset Management
+
+Automatic handling of assets through the `asset!()` macro:
+
+- Compile-time asset resolution
+- Hash-based cache busting
+- Platform-specific asset bundling
+- Tailwind CSS integration with auto-installation
+
+### Development Tools
+
+- **`dx serve`** - Development server with hot-reload
+- **`dx build`** - Production builds with optimization
+- **`dx bundle`** - Platform-specific app bundles
+- **`dx check`** - Lint and check your code
+- **`dx fmt`** - Format RSX macros
+- **`dx doctor`** - Diagnose installation and configuration
+
+## Architecture
+
+The CLI orchestrates multiple build tools:
+
+1. **Cargo** - Rust compilation
+2. **wasm-bindgen** - WASM JavaScript bindings (auto-managed)
+3. **wasm-opt** - WASM optimization (auto-installed)
+4. **Tailwind CSS** - Styling (auto-installed when detected)
+5. **Platform bundlers** - iOS, Android, desktop packaging
+
+All external tools are automatically managed by the CLI - you don't need to install them separately.
+
+## Configuration
+
+Projects are configured through `Dioxus.toml`:
+
+```toml
+[application]
+name = "my-app"
+out_dir = "dist"
+public_dir = "public"
+
+[web.app]
+title = "My Dioxus App"
+
+[web.watcher]
+watch_path = ["src", "public"]
+```
+
+See [Configuration](/cli/configuration) for complete details.
+
+## Workspace Support
+
+The CLI supports Cargo workspaces with package selection:
+
+```bash
+dx serve --package my-workspace-app
+```
+
+For fullstack applications with separate client/server packages:
+
+```bash
+dx serve \
+  client --package frontend \
+  server --package backend
+```
+
+## Getting Help
+
+Every command has detailed help:
+
+```bash
+dx --help
+dx serve --help
+dx build --help
+```
+
+Common keyboard shortcuts in `dx serve`:
+
+- **`r`** - Trigger rebuild
+- **`p`** - Toggle automatic rebuilds
+- **`v`** - Toggle verbose logging
+- **`/`** - Show all commands
+- **`Ctrl+C`** - Exit
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Commands" icon="terminal" href="/cli/commands">
+    Explore all available CLI commands
+  </Card>
+  <Card title="Configuration" icon="gear" href="/cli/configuration">
+    Configure Dioxus.toml for your project
+  </Card>
+  <Card title="Hot-Reload" icon="bolt" href="/cli/hot-reload">
+    Learn about the hot-reload system
+  </Card>
+  <Card title="Bundling" icon="box" href="/cli/bundling">
+    Package apps for production
+  </Card>
+</CardGroup>

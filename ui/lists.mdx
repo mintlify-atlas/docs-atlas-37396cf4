@@ -1,0 +1,565 @@
+---
+title: Rendering Lists
+description: Learn how to render dynamic lists and iterate over data in Dioxus
+---
+
+Rendering lists is a common task in web development. Dioxus provides several ways to iterate over collections and render dynamic lists efficiently.
+
+## Basic List Rendering
+
+### Using For Loops
+
+The most straightforward way to render lists is using `for` loops in RSX:
+
+```rust
+use dioxus::prelude::*;
+
+fn app() -> Element {
+    let items = vec!["Apple", "Banana", "Cherry"];
+    
+    rsx! {
+        ul {
+            for item in items {
+                li { "{item}" }
+            }
+        }
+    }
+}
+```
+
+### Using Iterators with map()
+
+You can also use iterator methods with `map()`:
+
+```rust
+fn app() -> Element {
+    let numbers = 0..5;
+    
+    rsx! {
+        ul {
+            {numbers.map(|n| rsx! { li { "Number: {n}" } })}
+        }
+    }
+}
+```
+
+## Working with Dynamic Lists
+
+### Lists from Signals
+
+```rust
+fn app() -> Element {
+    let mut items = use_signal(|| vec![
+        "First item".to_string(),
+        "Second item".to_string(),
+        "Third item".to_string(),
+    ]);
+    
+    rsx! {
+        div {
+            ul {
+                for item in items.read().iter() {
+                    li { "{item}" }
+                }
+            }
+            
+            button {
+                onclick: move |_| {
+                    items.write().push(format!("Item {}", items.len() + 1));
+                },
+                "Add Item"
+            }
+        }
+    }
+}
+```
+
+### Iterating with Index
+
+Use `enumerate()` to get both index and item:
+
+```rust
+fn app() -> Element {
+    let mut items = use_signal(|| vec!["Apple", "Banana", "Cherry"]);
+    
+    rsx! {
+        ul {
+            for (i, item) in items.read().iter().enumerate() {
+                li {
+                    "{i + 1}. {item}"
+                    button {
+                        onclick: move |_| { items.write().remove(i); },
+                        "Remove"
+                    }
+                }
+            }
+        }
+    }
+}
+```
+
+## Keys for List Items
+
+### Why Keys Matter
+
+Keys help Dioxus identify which items have changed, been added, or been removed. This improves performance by minimizing DOM updates.
+
+```rust
+fn app() -> Element {
+    let mut items = use_signal(|| vec![
+        (1, "Apple"),
+        (2, "Banana"),
+        (3, "Cherry"),
+    ]);
+    
+    rsx! {
+        ul {
+            for (id, name) in items.read().iter() {
+                // Use the unique id as the key
+                li { key: "{id}", "{name}" }
+            }
+        }
+    }
+}
+```
+
+### Good Keys vs Bad Keys
+
+```rust
+// ❌ BAD: Using array index as key
+for (i, item) in items.iter().enumerate() {
+    li { key: "{i}", "{item}" }  // Index changes when items are reordered
+}
+
+// ✅ GOOD: Using unique, stable identifier
+for item in items.read().iter() {
+    li { key: "{item.id}", "{item.name}" }  // ID doesn't change
+}
+
+// ✅ GOOD: Using the value itself if it's unique
+for item in items.read().iter() {
+    li { key: "{item}", "{item}" }  // Value is unique
+}
+```
+
+## Working with Structs
+
+### Rendering Structured Data
+
+```rust
+#[derive(Clone, PartialEq)]
+struct Todo {
+    id: usize,
+    text: String,
+    completed: bool,
+}
+
+fn app() -> Element {
+    let mut todos = use_signal(|| vec![
+        Todo { id: 1, text: "Learn Dioxus".to_string(), completed: false },
+        Todo { id: 2, text: "Build an app".to_string(), completed: false },
+    ]);
+    
+    rsx! {
+        ul {
+            for todo in todos.read().iter() {
+                li { key: "{todo.id}",
+                    input {
+                        r#type: "checkbox",
+                        checked: todo.completed,
+                    }
+                    span {
+                        text_decoration: if todo.completed { "line-through" } else { "none" },
+                        "{todo.text}"
+                    }
+                }
+            }
+        }
+    }
+}
+```
+
+### Extracting List Items to Components
+
+```rust
+#[component]
+fn TodoItem(todo: Todo, on_toggle: EventHandler<usize>) -> Element {
+    rsx! {
+        li {
+            input {
+                r#type: "checkbox",
+                checked: todo.completed,
+                onchange: move |_| on_toggle.call(todo.id),
+            }
+            span { "{todo.text}" }
+        }
+    }
+}
+
+fn app() -> Element {
+    let mut todos = use_signal(|| vec![
+        Todo { id: 1, text: "Learn Dioxus".to_string(), completed: false },
+    ]);
+    
+    let toggle_todo = move |id: usize| {
+        todos.write().iter_mut()
+            .find(|t| t.id == id)
+            .map(|t| t.completed = !t.completed);
+    };
+    
+    rsx! {
+        ul {
+            for todo in todos.read().iter() {
+                TodoItem {
+                    key: "{todo.id}",
+                    todo: todo.clone(),
+                    on_toggle: toggle_todo,
+                }
+            }
+        }
+    }
+}
+```
+
+## List Operations
+
+### Adding Items
+
+```rust
+fn app() -> Element {
+    let mut items = use_signal(|| vec!["First".to_string()]);
+    let mut input = use_signal(String::new);
+    
+    rsx! {
+        div {
+            input {
+                value: "{input}",
+                oninput: move |e| input.set(e.value()),
+            }
+            button {
+                onclick: move |_| {
+                    if !input().is_empty() {
+                        items.write().push(input());
+                        input.set(String::new());
+                    }
+                },
+                "Add"
+            }
+            
+            ul {
+                for item in items.read().iter() {
+                    li { "{item}" }
+                }
+            }
+        }
+    }
+}
+```
+
+### Removing Items
+
+```rust
+fn app() -> Element {
+    let mut items = use_signal(|| vec!["Apple", "Banana", "Cherry"]);
+    
+    rsx! {
+        ul {
+            for (i, item) in items.read().iter().enumerate() {
+                li { key: "{item}",
+                    "{item}"
+                    button {
+                        onclick: move |_| { items.write().remove(i); },
+                        "Remove"
+                    }
+                }
+            }
+        }
+    }
+}
+```
+
+### Filtering Lists
+
+```rust
+fn app() -> Element {
+    let all_items = use_signal(|| vec!["Apple", "Banana", "Cherry", "Date"]);
+    let mut filter = use_signal(String::new);
+    
+    rsx! {
+        div {
+            input {
+                placeholder: "Filter items...",
+                value: "{filter}",
+                oninput: move |e| filter.set(e.value()),
+            }
+            
+            ul {
+                for item in all_items.read().iter().filter(|item| {
+                    item.to_lowercase().contains(&filter().to_lowercase())
+                }) {
+                    li { "{item}" }
+                }
+            }
+        }
+    }
+}
+```
+
+### Sorting Lists
+
+```rust
+fn app() -> Element {
+    let mut items = use_signal(|| vec![3, 1, 4, 1, 5, 9, 2, 6]);
+    
+    rsx! {
+        div {
+            button {
+                onclick: move |_| {
+                    items.write().sort();
+                },
+                "Sort Ascending"
+            }
+            
+            button {
+                onclick: move |_| {
+                    items.write().sort_by(|a, b| b.cmp(a));
+                },
+                "Sort Descending"
+            }
+            
+            ul {
+                for item in items.read().iter() {
+                    li { key: "{item}", "{item}" }
+                }
+            }
+        }
+    }
+}
+```
+
+## Advanced Patterns
+
+### Nested Lists
+
+```rust
+#[derive(Clone)]
+struct Category {
+    name: String,
+    items: Vec<String>,
+}
+
+fn app() -> Element {
+    let categories = use_signal(|| vec![
+        Category {
+            name: "Fruits".to_string(),
+            items: vec!["Apple".to_string(), "Banana".to_string()],
+        },
+        Category {
+            name: "Vegetables".to_string(),
+            items: vec!["Carrot".to_string(), "Broccoli".to_string()],
+        },
+    ]);
+    
+    rsx! {
+        div {
+            for category in categories.read().iter() {
+                div { key: "{category.name}",
+                    h3 { "{category.name}" }
+                    ul {
+                        for item in category.items.iter() {
+                            li { key: "{item}", "{item}" }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+```
+
+### Paginated Lists
+
+```rust
+fn app() -> Element {
+    let items = use_signal(|| (1..=100).collect::<Vec<_>>());
+    let mut page = use_signal(|| 0);
+    let page_size = 10;
+    
+    let page_items = use_memo(move || {
+        let start = page() * page_size;
+        let end = (start + page_size).min(items.len());
+        items.read()[start..end].to_vec()
+    });
+    
+    let total_pages = (items.len() + page_size - 1) / page_size;
+    
+    rsx! {
+        div {
+            ul {
+                for item in page_items().iter() {
+                    li { key: "{item}", "Item {item}" }
+                }
+            }
+            
+            div { class: "pagination",
+                button {
+                    disabled: page() == 0,
+                    onclick: move |_| page -= 1,
+                    "Previous"
+                }
+                span { "Page {page() + 1} of {total_pages}" }
+                button {
+                    disabled: page() >= total_pages - 1,
+                    onclick: move |_| page += 1,
+                    "Next"
+                }
+            }
+        }
+    }
+}
+```
+
+### Virtualized Lists
+
+For extremely long lists, consider using virtualization:
+
+```rust
+fn app() -> Element {
+    let items = use_signal(|| (0..10000).collect::<Vec<_>>());
+    let mut visible_start = use_signal(|| 0);
+    let visible_count = 20;
+    
+    rsx! {
+        div {
+            style: "height: 400px; overflow-y: scroll;",
+            onscroll: move |e| {
+                let scroll_top = e.data().scroll_top();
+                visible_start.set((scroll_top / 30.0) as usize);
+            },
+            
+            div {
+                style: "height: {items.len() * 30}px; position: relative;",
+                
+                for i in visible_start()..=(visible_start() + visible_count).min(items.len() - 1) {
+                    div {
+                        key: "{i}",
+                        style: "position: absolute; top: {i * 30}px; height: 30px;",
+                        "Item {items.read()[i]}"
+                    }
+                }
+            }
+        }
+    }
+}
+```
+
+## Performance Tips
+
+### Use Stable Keys
+
+```rust
+// ✅ Good: Stable ID
+li { key: "{item.id}", "{item.name}" }
+
+// ❌ Bad: Index can change
+li { key: "{index}", "{item}" }
+```
+
+### Memoize Expensive Computations
+
+```rust
+let filtered_items = use_memo(move || {
+    items.read()
+        .iter()
+        .filter(|item| item.matches_criteria())
+        .collect::<Vec<_>>()
+});
+```
+
+### Use iter() Instead of clone()
+
+```rust
+// ✅ Good: Iterate over references
+for item in items.read().iter() {
+    li { "{item}" }
+}
+
+// ❌ Less efficient: Clones the entire vector
+for item in items().clone() {
+    li { "{item}" }
+}
+```
+
+## Common Patterns
+
+### Empty State
+
+```rust
+rsx! {
+    if items.read().is_empty() {
+        p { "No items to display" }
+    } else {
+        ul {
+            for item in items.read().iter() {
+                li { "{item}" }
+            }
+        }
+    }
+}
+```
+
+### Loading State
+
+```rust
+rsx! {
+    if is_loading() {
+        div { "Loading..." }
+    } else {
+        ul {
+            for item in items.read().iter() {
+                li { "{item}" }
+            }
+        }
+    }
+}
+```
+
+### Counter Example
+
+```rust
+fn app() -> Element {
+    let mut counters = use_signal(|| vec![0, 0, 0]);
+    
+    rsx! {
+        div {
+            button {
+                onclick: move |_| counters.push(0),
+                "Add Counter"
+            }
+            
+            for (i, counter) in counters.iter().enumerate() {
+                div { key: "{i}",
+                    button { onclick: move |_| counters.write()[i] -= 1, "-" }
+                    span { " {counter} " }
+                    button { onclick: move |_| counters.write()[i] += 1, "+" }
+                    button {
+                        onclick: move |_| { counters.remove(i); },
+                        "Remove"
+                    }
+                }
+            }
+        }
+    }
+}
+```
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Components" icon="cube" href="../essentials/components">
+    Break your lists into reusable components
+  </Card>
+  <Card title="Signals" icon="signal" href="../state/signals">
+    Learn more about reactive state management
+  </Card>
+</CardGroup>

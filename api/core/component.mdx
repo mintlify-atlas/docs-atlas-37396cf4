@@ -1,0 +1,404 @@
+---
+title: "Component"
+description: "Components and the #[component] macro for building reusable UI in Dioxus"
+---
+
+## Overview
+
+Components are the building blocks of Dioxus applications. They are functions that take props and return an `Element`. The `#[component]` macro simplifies component creation with automatic props derivation.
+
+## Component Type
+
+```rust
+pub type Component<P = ()> = fn(P) -> Element;
+```
+
+A component is simply a function that takes props and returns an `Element`.
+
+## ComponentFunction Trait
+
+The `ComponentFunction` trait is implemented for functions that can act as components.
+
+```rust
+pub trait ComponentFunction<Props, Marker = ()>: Clone + 'static {
+    fn fn_ptr(&self) -> usize;
+    fn rebuild(&self, props: Props) -> Element;
+}
+```
+
+### Implementations
+
+The trait is automatically implemented for:
+- Functions that take props: `fn(Props) -> Element`
+- Functions with no props: `fn() -> Element`
+
+## The #[component] Macro
+
+The `#[component]` macro is the recommended way to define components. It automatically generates the props struct and implements required traits.
+
+### Basic Usage
+
+```rust
+use dioxus::prelude::*;
+
+#[component]
+fn Greeting(name: String) -> Element {
+    rsx! {
+        div { "Hello, {name}!" }
+    }
+}
+
+// Usage
+fn app() -> Element {
+    rsx! {
+        Greeting { name: "World" }
+    }
+}
+```
+
+### With Multiple Props
+
+```rust
+#[component]
+fn UserCard(
+    name: String,
+    age: u32,
+    email: String,
+) -> Element {
+    rsx! {
+        div { class: "user-card",
+            h2 { "{name}" }
+            p { "Age: {age}" }
+            p { "Email: {email}" }
+        }
+    }
+}
+
+// Usage
+fn app() -> Element {
+    rsx! {
+        UserCard {
+            name: "Alice",
+            age: 30,
+            email: "alice@example.com",
+        }
+    }
+}
+```
+
+### Optional Props
+
+```rust
+#[component]
+fn Button(
+    text: String,
+    #[props(default)] disabled: bool,
+    #[props(default)] class: String,
+) -> Element {
+    rsx! {
+        button {
+            class: "{class}",
+            disabled: disabled,
+            "{text}"
+        }
+    }
+}
+
+// Usage - optional props can be omitted
+fn app() -> Element {
+    rsx! {
+        Button { text: "Click me" }
+        Button { 
+            text: "Disabled",
+            disabled: true,
+        }
+    }
+}
+```
+
+### Children Prop
+
+```rust
+#[component]
+fn Container(children: Element) -> Element {
+    rsx! {
+        div { class: "container",
+            {children}
+        }
+    }
+}
+
+// Usage
+fn app() -> Element {
+    rsx! {
+        Container {
+            h1 { "Title" }
+            p { "Content" }
+        }
+    }
+}
+```
+
+## Manual Props Definition
+
+You can also manually define props using the `Props` trait.
+
+### Properties Trait
+
+```rust
+pub trait Properties: Clone + Sized + 'static {
+    type Builder;
+    fn builder() -> Self::Builder;
+    fn memoize(&mut self, other: &Self) -> bool;
+    fn into_vcomponent<M: 'static>(
+        self,
+        render_fn: impl ComponentFunction<Self, M>
+    ) -> VComponent;
+}
+```
+
+### Manual Implementation
+
+```rust
+use dioxus::prelude::*;
+
+#[derive(Props, PartialEq, Clone)]
+struct ButtonProps {
+    text: String,
+    #[props(default)]
+    disabled: bool,
+}
+
+fn Button(props: ButtonProps) -> Element {
+    rsx! {
+        button {
+            disabled: props.disabled,
+            "{props.text}"
+        }
+    }
+}
+```
+
+## VComponent
+
+The internal representation of a component instance.
+
+```rust
+pub struct VComponent {
+    pub name: &'static str,
+    render_fn: usize,
+    props: BoxedAnyProps,
+}
+```
+
+### Methods
+
+#### `VComponent::new()`
+
+Creates a new component instance.
+
+```rust
+pub fn new<P, M: 'static>(
+    component: impl ComponentFunction<P, M>,
+    props: P,
+    fn_name: &'static str,
+) -> Self
+where
+    P: Properties + 'static
+```
+
+#### `VComponent::mounted_scope_id()`
+
+Gets the ScopeId this component is mounted to.
+
+```rust
+pub fn mounted_scope_id(
+    &self,
+    dynamic_node_index: usize,
+    vnode: &VNode,
+    dom: &VirtualDom,
+) -> Option<ScopeId>
+```
+
+## Component Patterns
+
+### Stateful Components
+
+```rust
+#[component]
+fn Counter(initial: i32) -> Element {
+    let mut count = use_signal(|| initial);
+    
+    rsx! {
+        div {
+            p { "Count: {count}" }
+            button {
+                onclick: move |_| count += 1,
+                "Increment"
+            }
+        }
+    }
+}
+```
+
+### Components with Effects
+
+```rust
+#[component]
+fn DataFetcher(url: String) -> Element {
+    let mut data = use_signal(|| None::<String>);
+    
+    use_effect(move || {
+        spawn(async move {
+            let response = fetch(&url).await;
+            data.set(Some(response));
+        });
+    });
+    
+    rsx! {
+        div {
+            match data() {
+                Some(d) => rsx! { p { "{d}" } },
+                None => rsx! { p { "Loading..." } },
+            }
+        }
+    }
+}
+```
+
+### Higher-Order Components
+
+```rust
+#[component]
+fn WithLoading<P: PartialEq + Clone + 'static>(
+    is_loading: bool,
+    component: Component<P>,
+    props: P,
+) -> Element {
+    if is_loading {
+        rsx! { div { "Loading..." } }
+    } else {
+        rsx! { {component(props)} }
+    }
+}
+```
+
+### Generic Components
+
+```rust
+use dioxus::prelude::*;
+
+#[component]
+fn List<T: std::fmt::Display + 'static>(
+    items: Vec<T>,
+) -> Element {
+    rsx! {
+        ul {
+            for item in items {
+                li { "{item}" }
+            }
+        }
+    }
+}
+```
+
+## Component Lifecycle
+
+### Initialization
+
+```rust
+#[component]
+fn MyComponent() -> Element {
+    // Runs once when component mounts
+    use_effect(|| {
+        println!("Component mounted");
+    });
+    
+    rsx! { div { "Hello" } }
+}
+```
+
+### Cleanup
+
+```rust
+#[component]
+fn MyComponent() -> Element {
+    use_effect(|| {
+        // Setup
+        let subscription = subscribe_to_events();
+        
+        // Cleanup function
+        move || {
+            subscription.unsubscribe();
+        }
+    });
+    
+    rsx! { div { "Hello" } }
+}
+```
+
+## Prop Validation
+
+Props must implement `PartialEq` for memoization:
+
+```rust
+#[derive(Props, PartialEq, Clone)]
+struct MyProps {
+    name: String,
+    count: i32,
+}
+```
+
+Components re-render when props change (based on `PartialEq`).
+
+## Best Practices
+
+### Keep Components Small
+
+```rust
+// Good: Small, focused components
+#[component]
+fn Header(title: String) -> Element {
+    rsx! { h1 { "{title}" } }
+}
+
+#[component]
+fn Footer() -> Element {
+    rsx! { footer { "© 2024" } }
+}
+
+#[component]
+fn App() -> Element {
+    rsx! {
+        Header { title: "My App" }
+        main { /* content */ }
+        Footer {}
+    }
+}
+```
+
+### Use Memo for Expensive Props
+
+```rust
+#[component]
+fn ExpensiveList(items: Vec<Item>) -> Element {
+    // Only recompute when items change
+    let processed = use_memo(move || {
+        items.iter()
+            .map(|item| expensive_transform(item))
+            .collect::<Vec<_>>()
+    });
+    
+    rsx! {
+        for item in processed() {
+            div { "{item}" }
+        }
+    }
+}
+```
+
+## See Also
+
+- [Element](/api/core/element) - Return type of components
+- [Scope](/api/core/scope) - Component context and state
+- [Properties Documentation](https://dioxuslabs.com/learn/0.6/reference/component_props)
